@@ -555,7 +555,13 @@ def('eodQuestions',[]);
 def('reflectionJournal',{}); // {date: [{qid, question, answer}]}
 
 function save(){ localStorage.setItem('a26v38', JSON.stringify(S)); }
-function today(){ return new Date().toISOString().split('T')[0]; }
+function today(){
+  const d = new Date();
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth()+1).padStart(2,'0');
+  const dy = String(d.getDate()).padStart(2,'0');
+  return `${yr}-${mo}-${dy}`;
+}
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function curWk(){
   const diff = Math.floor((new Date()-START)/(1000*60*60*24*7));
