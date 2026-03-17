@@ -1594,6 +1594,7 @@ function buildGoalsContent(){
         </div>
         <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
           <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
+          <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
           <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
         </div>
       </div>
@@ -1650,23 +1651,99 @@ function renderGoalPageProjRow(p, groupId){
           ${p.deadline?' · '+p.deadline:''}
         </div>
       </div>
-      <div style="display:flex;gap:5px;flex-shrink:0;">
+      <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+        <button class="btn btsm btgh" onclick="openProjectEdit('${p.id}')">Edit</button>
         ${p.status!=='complete'?`<button class="btn btsm btg" onclick="markProjComplete('${p.id}');buildGoalsPage()">✅ Done</button>`:''}
         <button class="btn btsm btr" onclick="archiveProject('${p.id}')">Archive</button>
       </div>
     </div>
-    ${habits.length ? `<div onclick="toggleSection('${dropdId}')"
+    ${habits.length ? `
+    <div onclick="toggleSection('${dropdId}')"
       style="padding:5px 12px 8px;font-size:.65rem;font-weight:700;color:var(--tx3);cursor:pointer;display:flex;align-items:center;gap:5px;border-top:1px solid var(--bdr);">
       <span style="color:var(--a);">&#9662;</span> ${habits.length} habit${habits.length>1?'s':''} — tap to view
     </div>
-    <div id="${dropdId}" style="display:none;padding:0 12px 10px;">
-      ${habits.map(h=>`<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-top:1px solid rgba(0,0,0,.05);">
-        <div style="width:5px;height:5px;border-radius:50%;background:${habitColor(h)};flex-shrink:0;"></div>
-        <div style="font-size:.78rem;flex:1;">${h.name}</div>
-        <div style="font-size:.62rem;color:var(--tx3);">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
-      </div>`).join('')}
+    <div id="${dropdId}" style="display:none;padding:0 8px 10px;">
+      ${habits.map(h=>{
+        const hcol = habitColor(h);
+        return `<div style="display:flex;align-items:center;gap:7px;padding:7px 4px;border-top:1px solid rgba(0,0,0,.05);">
+          <div style="width:5px;height:5px;border-radius:50%;background:${hcol};flex-shrink:0;"></div>
+          <div style="font-size:.78rem;flex:1;">${h.name}</div>
+          <div style="font-size:.6rem;color:var(--tx3);margin-right:4px;">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
+          <button class="btn btsm btgh" onclick="openHabitEdit('${h.id}')">Edit</button>
+          <button class="btn btsm btr" onclick="archiveHabit('${h.id}')">Archive</button>
+        </div>`;
+      }).join('')}
     </div>` : ''}
   </div>`;
+}
+
+// ── GOAL / PROJECT EDIT MODALS ────────────────────────────────────────────
+function openGoalEdit(goalId){
+  const g = S.goals.find(g=>g.id===goalId); if(!g) return;
+  document.getElementById('modal-title').textContent = 'Edit goal';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="igrp"><label class="ilbl">Goal name</label>
+      <input class="inp" id="ge-name" value="${g.name}"/>
+    </div>
+    <div class="igrp"><label class="ilbl">Life area</label>
+      <select class="inp" id="ge-area" style="appearance:none;">
+        ${Object.keys(AREA_COLORS).map(a=>`<option value="${a}" ${g.area===a?'selected':''}>${a}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btp bfu" onclick="saveGoalEdit('${goalId}')">Save changes</button>
+    <button class="btn btr bfu" style="margin-top:7px;" onclick="archiveGoal('${goalId}');closeModal('modal-main')">Archive goal</button>`;
+  openModal('modal-main');
+  setTimeout(()=>document.getElementById('ge-name')?.focus(),120);
+}
+
+function saveGoalEdit(goalId){
+  const g = S.goals.find(g=>g.id===goalId); if(!g) return;
+  const name = document.getElementById('ge-name')?.value.trim();
+  if(!name){ toast('Enter a name'); return; }
+  g.name = name;
+  g.area = document.getElementById('ge-area')?.value||g.area;
+  save(); closeModal('modal-main'); buildGoalsPage(); toast('Goal updated ✓');
+}
+
+function openProjectEdit(projId){
+  const p = S.projects.find(p=>p.id===projId); if(!p) return;
+  const goals = S.goals.filter(g=>!g.archived);
+  document.getElementById('modal-title').textContent = 'Edit project';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="igrp"><label class="ilbl">Project name</label>
+      <input class="inp" id="pe-name" value="${p.name}"/>
+    </div>
+    <div class="igrp"><label class="ilbl">Link to goal</label>
+      <select class="inp" id="pe-goal" style="appearance:none;">
+        <option value="">— no goal —</option>
+        ${goals.map(g=>`<option value="${g.id}" ${p.goalId===g.id?'selected':''}>${g.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="igrp"><label class="ilbl">Deadline (optional)</label>
+      <input class="inp" type="date" id="pe-deadline" value="${p.deadline||''}"/>
+    </div>
+    <div class="igrp"><label class="ilbl">Status</label>
+      <select class="inp" id="pe-status" style="appearance:none;">
+        <option value="active" ${p.status==='active'?'selected':''}>Active</option>
+        <option value="complete" ${p.status==='complete'?'selected':''}>Complete</option>
+        <option value="abandoned" ${p.status==='abandoned'?'selected':''}>Abandoned</option>
+      </select>
+    </div>
+    <button class="btn btp bfu" onclick="saveProjectEdit('${projId}')">Save changes</button>
+    <button class="btn btr bfu" style="margin-top:7px;" onclick="archiveProject('${projId}')">Archive project</button>`;
+  openModal('modal-main');
+  setTimeout(()=>document.getElementById('pe-name')?.focus(),120);
+}
+
+function saveProjectEdit(projId){
+  const p = S.projects.find(p=>p.id===projId); if(!p) return;
+  const name = document.getElementById('pe-name')?.value.trim();
+  if(!name){ toast('Enter a name'); return; }
+  p.name     = name;
+  p.goalId   = document.getElementById('pe-goal')?.value||null;
+  p.deadline = document.getElementById('pe-deadline')?.value||'';
+  p.status   = document.getElementById('pe-status')?.value||p.status;
+  save(); closeModal('modal-main'); buildGoalsPage(); toast('Project updated ✓');
 }
 
 // ── SETTINGS — WORKSPACE ─────────────────────────────────────────────────
@@ -1950,7 +2027,7 @@ function archiveGoal(id){
 function archiveHabit(id){
   const h=S.habits.find(h=>h.id===id); if(!h) return;
   h.archived=true;
-  save(); buildWorkspace(); buildDailyView();
+  save(); buildGoalsPage(); buildWorkspace(); buildDailyView();
   const b=document.getElementById('ws-archive-body'); if(b) b.style.display='block';
   toast('Habit archived ✓');
 }
@@ -1998,7 +2075,7 @@ function saveHabitEdit(habId){
   h.goalId=document.getElementById('eh-goal')?.value||null;
   h.hint=document.getElementById('eh-hint')?.value.trim()||'';
   h.reasonEnabled=document.getElementById('eh-reason')?.checked||false;
-  save(); closeModal('modal-main'); buildWorkspace(); buildDailyView(); toast('Habit updated ✓');
+  save(); closeModal('modal-main'); buildGoalsPage(); buildWorkspace(); buildDailyView(); toast('Habit updated ✓');
 }
 
 function openProjDetail(projId){
