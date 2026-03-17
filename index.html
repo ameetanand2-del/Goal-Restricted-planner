@@ -188,6 +188,10 @@ input,textarea,select{font-family:inherit;}
 /* drag-and-drop */
 .drag-handle{cursor:grab;color:var(--tx3);font-size:.9rem;padding:4px 6px 4px 0;flex-shrink:0;touch-action:none;user-select:none;-webkit-user-select:none;}
 .drag-handle:active{cursor:grabbing;}
+/* dashboard KPIs */
+.dash-kpi{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:10px 8px;text-align:center;}
+.dash-kpi-val{font-family:var(--ffh);font-size:1.15rem;font-weight:800;line-height:1.1;margin-bottom:3px;}
+.dash-kpi-lbl{font-size:.57rem;color:var(--tx3);font-weight:600;text-transform:uppercase;letter-spacing:.07em;}
 .drag-item{transition:opacity .15s;}
 .drag-item.dragging{opacity:.35;background:var(--bg2)!important;}
 .drag-item.drag-over{border-top:2px solid var(--a)!important;}
@@ -713,13 +717,27 @@ function buildDailyHabits(){
   let gCount = 0;
   Object.values(groups).forEach(g=>{
     ensureOrder(g.habits);
+    const doneCount = g.habits.filter(h=>getHabitState(td,h.id)==='done').length;
+    const totalCount = g.habits.length;
+    const allDone = doneCount===totalCount;
+    const col = g.color;
+    const bodyId = 'hgrp-'+gCount;
+    // Auto-open if any habit not yet addressed, keep closed if all done
+    const startOpen = !locked && !allDone;
     const rows = g.habits.map(h=>renderHabitRow(h,td,locked)).join('');
-    gHtml += `<div style="margin-bottom:12px;">
-      <div class="grp-hdr" style="background:${g.color}12;border:1px solid ${g.color}22;">
-        <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
-        <div class="grp-name">${g.label}</div>
+    gHtml += `<div style="margin-bottom:8px;border:1px solid ${col}22;border-radius:var(--r2);overflow:hidden;">
+      <div onclick="toggleSection('${bodyId}')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${col}10;user-select:none;">
+        <div style="width:6px;height:6px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <div style="flex:1;font-size:.78rem;font-weight:700;">${g.label}</div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span style="font-size:.67rem;font-weight:700;color:${allDone?'var(--green)':col};">${doneCount}/${totalCount}</span>
+          ${allDone?'<span style="font-size:.7rem;">✅</span>':''}
+          <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+        </div>
       </div>
-      <div class="cks" id="hgrp-${gCount}">${rows}</div>
+      <div id="${bodyId}" style="display:${startOpen?'block':'none'};">
+        <div class="cks" id="hgrp-inner-${gCount}">${rows}</div>
+      </div>
     </div>`;
     gCount++;
   });
@@ -730,7 +748,7 @@ function buildDailyHabits(){
     let gi = 0;
     Object.values(groups).forEach(g=>{
       const grpHabits = g.habits;
-      makeDraggable('#hgrp-'+gi, ()=>grpHabits, ()=>{ buildDailyHabits(); updateRing(); });
+      makeDraggable('#hgrp-inner-'+gi, ()=>grpHabits, ()=>{ buildDailyHabits(); updateRing(); });
       gi++;
     });
   }
@@ -1142,310 +1160,274 @@ function saveTask(){
 function buildTracker(){ buildTrackerHabits(); }
 
 // ── TRACKER STATE ─────────────────────────────────────────────────────────
-let dashWeeks     = 6;      // how many weeks to show in trend chart
-let dashHabits    = 'all';  // 'all' | habit id(s) comma-separated
-let heatmapOffset = 0;      // 0 = current week, -1 = last week, etc.
-let trendChart    = null;   // Chart.js instance
+let dashWeeks     = 6;
+let dashHabits    = [];
+let heatmapOffset = 0;
+let trendChart    = null;
+let perfSort      = 'project';
+let trendDropOpen = false;
 
-// Helper: get array of date strings for a given week offset
+function localDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function getWeekDays(offset){
-  const now = new Date();
-  const dow = now.getDay();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - (dow===0?6:dow-1) + offset*7);
-  return Array.from({length:7},(_,i)=>{
-    const d = new Date(mon);
-    d.setDate(mon.getDate()+i);
-    return d.toISOString().split('T')[0];
-  });
+  const now=new Date(), dow=now.getDay();
+  const mon=new Date(now);
+  mon.setDate(now.getDate()-(dow===0?6:dow-1)+offset*7);
+  return Array.from({length:7},(_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return localDate(d); });
 }
-
-// Helper: get last N full week blocks (Mon-Sun), newest last
 function getWeekBlocks(n){
-  const blocks = [];
-  for(let w=-(n-1); w<=0; w++){
-    const days = getWeekDays(w);
-    const label = 'W'+days[0].slice(5).replace('-','/');
-    blocks.push({days, label});
-  }
+  const blocks=[];
+  for(let w=-(n-1);w<=0;w++){ const days=getWeekDays(w); blocks.push({days,label:'W'+days[0].slice(5).replace('-','/')}); }
   return blocks;
 }
-
-// Helper: completion rate for a habit over a day array (simple done/total)
-function habitRate(habId, days){
-  const done = days.filter(d=>getHabitState(d,habId)==='done').length;
-  return days.length ? Math.round(done/days.length*100) : 0;
-}
-
-// Helper: current streak (consecutive done days ending today or yesterday)
+function habitRate(habId,days){ const done=days.filter(d=>getHabitState(d,habId)==='done').length; return days.length?Math.round(done/days.length*100):0; }
+function habitMissed(habId,days){ return days.filter(d=>{ const s=getHabitState(d,habId); return s!=='done'&&s!=='skipped'&&d<=today(); }).length; }
 function habitStreak(habId){
-  let streak = 0;
-  const now = new Date();
-  for(let i=0; i<90; i++){
-    const d = new Date(now);
-    d.setDate(now.getDate()-i);
-    const ds = d.toISOString().split('T')[0];
-    if(getHabitState(ds,habId)==='done') streak++;
-    else break;
-  }
-  return streak;
+  let s=0; const now=new Date();
+  for(let i=0;i<90;i++){ const d=new Date(now); d.setDate(now.getDate()-i); if(getHabitState(localDate(d),habId)==='done') s++; else break; }
+  return s;
+}
+function habitGroups(habits){
+  const groups={};
+  habits.forEach(h=>{
+    const key=h.projId||h.goalId||'__s';
+    if(!groups[key]) groups[key]={label:groupLabel(h),color:habitColor(h),habits:[]};
+    groups[key].habits.push(h);
+  });
+  return Object.values(groups);
 }
 
 function buildTrackerHabits(){
-  const el = document.getElementById('tracker-habits-content'); if(!el) return;
-  const habits = S.habits.filter(h=>!h.archived);
-  if(!habits.length){
-    el.innerHTML='<div style="text-align:center;padding:32px 0;font-size:.78rem;color:var(--tx3);">No habits yet.</div>';
-    return;
-  }
+  const el=document.getElementById('tracker-habits-content'); if(!el) return;
+  const habits=S.habits.filter(h=>!h.archived);
+  if(!habits.length){ el.innerHTML='<div style="text-align:center;padding:40px 0;font-size:.78rem;color:var(--tx3);">No habits yet.</div>'; return; }
+  const td=today(), thisWk=getWeekDays(0), lastWk=getWeekDays(-1);
+  const completedToday=habits.filter(h=>getHabitState(td,h.id)==='done').length;
+  const totalToday=habits.length;
+  const rateToday=totalToday?Math.round(completedToday/totalToday*100):0;
+  const streaksAlive=habits.filter(h=>habitStreak(h.id)>0).length;
+  const atRisk=habits.filter(h=>{ const state=getHabitState(td,h.id); if(state==='done'||state==='skipped') return false; return habitRate(h.id,thisWk)<50||(habitRate(h.id,lastWk)-habitRate(h.id,thisWk)>20); });
+  const kpiC=(v,hi,lo)=>v>=hi?'var(--green)':v>=lo?'var(--a2)':'var(--red)';
 
-  el.innerHTML = `
-    <!-- ① PERFORMANCE TABLE -->
-    <div style="margin-bottom:20px;">
-      <div class="sl" style="margin-bottom:10px;">&#128200; Habit Performance</div>
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        <table id="dash-perf-table" style="width:100%;border-collapse:collapse;font-size:.75rem;">
-          <thead>
-            <tr style="border-bottom:2px solid var(--bdr);">
-              <th style="text-align:left;padding:7px 10px 7px 0;color:var(--tx3);font-weight:700;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">Habit</th>
-              <th style="text-align:center;padding:7px 8px;color:var(--tx3);font-weight:700;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">Score</th>
-              <th style="text-align:center;padding:7px 8px;color:var(--tx3);font-weight:700;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">Streak</th>
-              <th style="text-align:center;padding:7px 8px;color:var(--tx3);font-weight:700;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">vs Last Wk</th>
-            </tr>
-          </thead>
-          <tbody id="dash-perf-body"></tbody>
-        </table>
+  let sortedHabits=[...habits];
+  if(perfSort==='streak')     sortedHabits.sort((a,b)=>habitStreak(b.id)-habitStreak(a.id));
+  if(perfSort==='completion') sortedHabits.sort((a,b)=>habitRate(a.id,thisWk)-habitRate(b.id,thisWk));
+  if(perfSort==='missed')     sortedHabits.sort((a,b)=>habitMissed(b.id,thisWk)-habitMissed(a.id,thisWk));
+  const groups=perfSort==='project'?habitGroups(sortedHabits):[{label:'All habits',color:'var(--a)',habits:sortedHabits}];
+
+  el.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+    <div class="dash-kpi"><div class="dash-kpi-val" style="color:${kpiC(completedToday,totalToday,Math.floor(totalToday*.5))};">${completedToday}<span style="font-size:.62rem;font-weight:500;color:var(--tx3);">/${totalToday}</span></div><div class="dash-kpi-lbl">Done Today</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val" style="color:${kpiC(rateToday,80,50)};">${rateToday}%</div><div class="dash-kpi-lbl">Rate</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val" style="color:var(--a2);">${streaksAlive}</div><div class="dash-kpi-lbl">Streaks On</div></div>
+    <div class="dash-kpi" style="${atRisk.length?'border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.04);':''}"><div class="dash-kpi-val" style="color:${atRisk.length?'var(--red)':'var(--green)'};">${atRisk.length}</div><div class="dash-kpi-lbl">At Risk</div></div>
+  </div>
+  ${atRisk.length?`<div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.18);border-radius:var(--r2);padding:9px 12px;margin-bottom:14px;font-size:.72rem;"><span style="color:var(--red);font-weight:700;">⚠ Needs attention:</span> <span style="color:var(--tx2);">${atRisk.map(h=>h.name).join(', ')}</span></div>`:''}
+
+  <div style="margin-bottom:22px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div class="sl" style="margin:0;">&#128202; Performance</div>
+      <div style="display:flex;gap:5px;align-items:center;">
+        <span style="font-size:.62rem;color:var(--tx3);">Sort:</span>
+        ${[['project','Project'],['streak','Streak'],['completion','Lowest %'],['missed','Missed']].map(([v,l])=>`<button class="btn btsm ${perfSort===v?'btp':'btgh'}" onclick="setPerfSort('${v}')">${l}</button>`).join('')}
       </div>
     </div>
+    <div id="perf-accordion"></div>
+  </div>
 
-    <!-- ② WEEKLY TREND CHART -->
-    <div style="margin-bottom:20px;">
-      <div class="sl" style="margin-bottom:10px;">&#128200; Weekly Trend</div>
-      <!-- Controls row -->
-      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">
-        <div style="font-size:.68rem;color:var(--tx3);font-weight:600;">Weeks:</div>
-        ${[4,6,8,12].map(n=>`<button class="btn btsm ${n===dashWeeks?'btp':'btgh'}" id="wk-btn-${n}" onclick="setDashWeeks(${n})">${n}</button>`).join('')}
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        <button class="btn btsm ${dashHabits==='all'?'btp':'btgh'}" id="hf-all" onclick="setDashHabits('all')">All habits</button>
-        ${habits.map(h=>{
-          const active = dashHabits.split(',').includes(h.id);
-          const col = habitColor(h);
-          return `<button class="btn btsm" id="hf-${h.id}" onclick="setDashHabits('${h.id}')"
-            style="${active&&dashHabits!=='all'?`background:${col}22;color:${col};border:1px solid ${col}44;`:'background:var(--sur);color:var(--tx2);border:1px solid var(--bdr);'}">${h.name}</button>`;
-        }).join('')}
-      </div>
-      <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;">
-        <div style="height:160px;position:relative;"><canvas id="c-trend"></canvas></div>
+  <div style="margin-bottom:22px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div class="sl" style="margin:0;">&#128200; Weekly Trend</div>
+      <div style="display:flex;gap:5px;">${[4,6,8,12].map(n=>`<button class="btn btsm ${n===dashWeeks?'btp':'btgh'}" onclick="setDashWeeks(${n})">${n}w</button>`).join('')}</div>
+    </div>
+    <div style="position:relative;margin-bottom:10px;">
+      <button onclick="toggleTrendDrop()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);font-size:.78rem;color:var(--tx2);">
+        <span id="trend-drop-label">${dashHabits.length===0?'Select habits to compare…':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`}</span>
+        <span style="font-size:.7rem;color:var(--tx3);">▾</span>
+      </button>
+      <div id="trend-drop-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);box-shadow:0 8px 32px rgba(0,0,0,.14);max-height:260px;overflow-y:auto;">
+        <div style="padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;gap:8px;">
+          <button class="btn btsm btgh" onclick="clearTrendHabits()" style="flex:1;">Clear all</button>
+        </div>
+        <div id="trend-drop-list"></div>
       </div>
     </div>
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;">
+      <div style="height:170px;position:relative;"><canvas id="c-trend"></canvas></div>
+    </div>
+    ${dashHabits.length===0?'<div style="text-align:center;font-size:.72rem;color:var(--tx3);margin-top:7px;">Select habits above to see trend lines</div>':''}
+  </div>
 
-    <!-- ③ HEATMAP -->
-    <div style="margin-bottom:20px;">
-      <div class="sl" style="margin-bottom:10px;">&#127919; Consistency Heatmap</div>
-      <!-- Week nav -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <button class="btn btsm btgh" onclick="setHeatmapOffset(heatmapOffset-1)">&#8592; Prev</button>
-        <div id="heatmap-week-label" style="font-size:.72rem;font-weight:600;color:var(--tx2);"></div>
-        <button class="btn btsm btgh" onclick="setHeatmapOffset(heatmapOffset+1)" id="heatmap-next-btn">Next &#8594;</button>
-      </div>
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        <div id="dash-heatmap"></div>
+  <div style="margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div class="sl" style="margin:0;">&#9726; Consistency</div>
+      <div style="display:flex;align-items:center;gap:7px;">
+        <button class="btn btsm btgh" onclick="setHeatmapOffset(heatmapOffset-1)">&#8592;</button>
+        <div id="heatmap-week-label" style="font-size:.7rem;font-weight:600;color:var(--tx2);min-width:120px;text-align:center;"></div>
+        <button class="btn btsm btgh" id="heatmap-next-btn" onclick="setHeatmapOffset(heatmapOffset+1)">&#8594;</button>
       </div>
     </div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><div id="dash-heatmap"></div></div>
+  </div>
   `;
 
-  renderDashPerfTable(habits);
+  renderPerfAccordion(groups,thisWk,lastWk);
+  renderTrendDropList(habits);
   renderTrendChart(habits);
   renderHeatmap(habits);
 }
 
-// ── PERFORMANCE TABLE ────────────────────────────────────────────────────
-function renderDashPerfTable(habits){
-  const body = document.getElementById('dash-perf-body'); if(!body) return;
-  const thisWk = getWeekDays(0);
-  const lastWk = getWeekDays(-1);
+function setPerfSort(s){ perfSort=s; buildTrackerHabits(); }
 
-  body.innerHTML = habits.map(h=>{
-    const score   = habitRate(h.id, thisWk);
-    const lastScore = habitRate(h.id, lastWk);
-    const streak  = habitStreak(h.id);
-    const diff    = score - lastScore;
-    const col     = habitColor(h);
-    const scoreCol = score>=80?'var(--green)':score>=50?'var(--a2)':'var(--red)';
-    let changeHtml = `<span style="color:var(--tx3);">—</span>`;
-    if(lastScore>0||score>0){
-      if(diff>0)  changeHtml=`<span style="color:var(--green);font-weight:700;">&#8593; +${diff}%</span>`;
-      else if(diff<0) changeHtml=`<span style="color:var(--red);font-weight:700;">&#8595; ${diff}%</span>`;
-      else        changeHtml=`<span style="color:var(--tx3);">= 0%</span>`;
-    }
-    return `<tr style="border-bottom:1px solid var(--bdr);">
-      <td style="padding:9px 10px 9px 0;">
-        <div style="display:flex;align-items:center;gap:7px;">
-          <div style="width:7px;height:7px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-          <span style="font-size:.78rem;font-weight:600;">${h.name}</span>
+function renderPerfAccordion(groups,thisWk,lastWk){
+  const el=document.getElementById('perf-accordion'); if(!el) return;
+  el.innerHTML=groups.map((g,gi)=>{
+    const habits=g.habits, col=g.color;
+    const avgPct=habits.length?Math.round(habits.reduce((s,h)=>s+habitRate(h.id,thisWk),0)/habits.length):0;
+    const needAttn=habits.filter(h=>habitRate(h.id,thisWk)<50).length;
+    const bodyId='pa-'+gi;
+    return `<div style="border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:8px;overflow:hidden;">
+      <div onclick="toggleSection('${bodyId}')" style="display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer;background:${col}08;">
+        <div style="width:7px;height:7px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.8rem;font-weight:700;">${g.label}</div>
+          <div style="font-size:.61rem;color:var(--tx3);margin-top:1px;">${habits.length} habit${habits.length>1?'s':''} · avg ${avgPct}%${needAttn?` · <span style="color:var(--red);">${needAttn} need attention</span>`:''}</div>
         </div>
-        <div style="font-size:.6rem;color:var(--tx3);margin-left:14px;">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
-      </td>
-      <td style="text-align:center;padding:9px 8px;">
-        <div style="font-size:.9rem;font-weight:700;color:${scoreCol};font-family:var(--ffh);">${score}%</div>
-        <div style="font-size:.55rem;color:var(--tx3);">this week</div>
-      </td>
-      <td style="text-align:center;padding:9px 8px;">
-        <div style="font-size:.9rem;font-weight:700;color:var(--a2);font-family:var(--ffh);">${streak}</div>
-        <div style="font-size:.55rem;color:var(--tx3);">days</div>
-      </td>
-      <td style="text-align:center;padding:9px 8px;">${changeHtml}</td>
-    </tr>`;
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+          <div class="pb" style="width:56px;"><div class="pf" style="width:${avgPct}%;background:${avgPct>=80?'var(--green)':avgPct>=50?'var(--a2)':'var(--red)'};"></div></div>
+          <span style="font-size:.75rem;font-weight:700;color:${avgPct>=80?'var(--green)':avgPct>=50?'var(--a2)':'var(--red)'};">${avgPct}%</span>
+          <span style="font-size:.65rem;color:var(--tx3);">▾</span>
+        </div>
+      </div>
+      <div id="${bodyId}" style="display:none;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="border-bottom:1px solid var(--bdr);background:var(--bg2);">
+            <th style="text-align:left;padding:6px 13px;font-size:.6rem;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Habit</th>
+            <th style="text-align:center;padding:6px 8px;font-size:.6rem;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Score</th>
+            <th style="text-align:center;padding:6px 8px;font-size:.6rem;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Streak</th>
+            <th style="text-align:center;padding:6px 8px;font-size:.6rem;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Missed</th>
+            <th style="text-align:center;padding:6px 8px;font-size:.6rem;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">vs LW</th>
+          </tr></thead>
+          <tbody>${habits.map(h=>{
+            const score=habitRate(h.id,thisWk), last=habitRate(h.id,lastWk), streak=habitStreak(h.id), missed=habitMissed(h.id,thisWk), diff=score-last;
+            const sc=score>=80?'var(--green)':score>=50?'var(--a2)':'var(--red)';
+            const chg=diff>0?`<span style="color:var(--green);">↑+${diff}%</span>`:diff<0?`<span style="color:var(--red);">↓${diff}%</span>`:`<span style="color:var(--tx3);">—</span>`;
+            return `<tr style="border-bottom:1px solid var(--bdr);">
+              <td style="padding:9px 13px;"><div style="font-size:.78rem;font-weight:500;">${h.name}</div><div style="font-size:.59rem;color:var(--tx3);">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div></td>
+              <td style="text-align:center;padding:9px 8px;font-size:.88rem;font-weight:700;color:${sc};font-family:var(--ffh);">${score}%</td>
+              <td style="text-align:center;padding:9px 8px;font-size:.85rem;font-weight:700;color:var(--a2);font-family:var(--ffh);">${streak>0?streak+'🔥':'0'}</td>
+              <td style="text-align:center;padding:9px 8px;font-size:.85rem;font-weight:700;color:${missed>2?'var(--red)':'var(--tx2)'};font-family:var(--ffh);">${missed}</td>
+              <td style="text-align:center;padding:9px 8px;font-size:.75rem;">${chg}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
   }).join('');
 }
 
-// ── TREND CHART ──────────────────────────────────────────────────────────
-function setDashWeeks(n){
-  dashWeeks = n;
-  buildTrackerHabits();
+function toggleTrendDrop(){
+  trendDropOpen=!trendDropOpen;
+  const p=document.getElementById('trend-drop-panel');
+  if(p) p.style.display=trendDropOpen?'block':'none';
+}
+function clearTrendHabits(){
+  dashHabits=[];
+  updateTrendDropLabel();
+  renderTrendChart(S.habits.filter(h=>!h.archived));
+  renderTrendDropList(S.habits.filter(h=>!h.archived));
+}
+function toggleTrendHabit(habId){
+  const idx=dashHabits.indexOf(habId);
+  if(idx>=0) dashHabits.splice(idx,1); else dashHabits.push(habId);
+  updateTrendDropLabel();
+  renderTrendChart(S.habits.filter(h=>!h.archived));
+  renderTrendDropList(S.habits.filter(h=>!h.archived));
+}
+function selectProjectHabits(ids){
+  ids.forEach(id=>{ if(!dashHabits.includes(id)) dashHabits.push(id); });
+  updateTrendDropLabel();
+  renderTrendChart(S.habits.filter(h=>!h.archived));
+  renderTrendDropList(S.habits.filter(h=>!h.archived));
+}
+function updateTrendDropLabel(){
+  const lbl=document.getElementById('trend-drop-label');
+  if(lbl) lbl.textContent=dashHabits.length===0?'Select habits to compare…':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`;
+}
+function renderTrendDropList(habits){
+  const el=document.getElementById('trend-drop-list'); if(!el) return;
+  const groups=habitGroups(habits);
+  el.innerHTML=groups.map(g=>{
+    const ids=g.habits.map(h=>h.id);
+    return `<div style="padding:7px 12px 3px;border-bottom:1px solid var(--bdr);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div style="font-size:.63rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.07em;">${g.label}</div>
+        <button class="btn btsm btgh" onclick="selectProjectHabits(${JSON.stringify(ids)})" style="font-size:.58rem;padding:2px 7px;">Select all</button>
+      </div>
+      ${g.habits.map(h=>{
+        const active=dashHabits.includes(h.id);
+        return `<div onclick="toggleTrendHabit('${h.id}')" style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;border-radius:6px;${active?'background:'+g.color+'14;':''}">
+          <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${active?g.color:'var(--bdr)'};background:${active?g.color:'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${active?'<span style="color:#fff;font-size:.55rem;">✓</span>':''}</div>
+          <div style="font-size:.78rem;${active?'font-weight:600;':'color:var(--tx2);'}">${h.name}</div>
+          <div style="font-size:.6rem;color:var(--tx3);margin-left:auto;">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
 }
 
-function setDashHabits(id){
-  dashHabits = id;
-  buildTrackerHabits();
-}
+function setDashWeeks(n){ dashWeeks=n; buildTrackerHabits(); }
 
 function renderTrendChart(habits){
-  const canvas = document.getElementById('c-trend'); if(!canvas) return;
-  const blocks = getWeekBlocks(dashWeeks);
-  const labels = blocks.map(b=>b.label);
-
-  let datasets = [];
-  const PALETTE = ['var(--a)','var(--blue)','var(--green)','var(--purple)','var(--a2)','var(--teal)'];
-  const PALETTE_RGB = ['232,98,42','59,130,246','34,197,94','168,85,247','245,166,35','20,184,166'];
-
-  if(dashHabits==='all'){
-    const data = blocks.map(b=>{
-      const done = habits.reduce((sum,h)=>sum+b.days.filter(d=>getHabitState(d,h.id)==='done').length,0);
-      const total = habits.length * b.days.length;
-      return total ? Math.round(done/total*100) : 0;
-    });
-    datasets.push({
-      label:'All habits',
-      data,
-      borderColor:'rgba(232,98,42,1)',
-      backgroundColor:'rgba(232,98,42,.12)',
-      fill:true,
-      tension:.4,
-      pointRadius:4,
-      pointBackgroundColor:'rgba(232,98,42,1)',
-      borderWidth:2.5
-    });
-  } else {
-    const ids = dashHabits.split(',').filter(Boolean);
-    ids.forEach((hid,i)=>{
-      const h = habits.find(h=>h.id===hid); if(!h) return;
-      const rgb = PALETTE_RGB[i%PALETTE_RGB.length];
-      const data = blocks.map(b=>habitRate(hid, b.days));
-      datasets.push({
-        label: h.name,
-        data,
-        borderColor:`rgba(${rgb},1)`,
-        backgroundColor:`rgba(${rgb},.08)`,
-        fill:false,
-        tension:.4,
-        pointRadius:4,
-        pointBackgroundColor:`rgba(${rgb},1)`,
-        borderWidth:2.5
-      });
-    });
-    if(!datasets.length) return;
-  }
-
-  // Destroy old chart if exists
-  if(trendChart){ try{ trendChart.destroy(); }catch(e){} trendChart=null; }
-
+  if(trendChart){ try{trendChart.destroy();}catch(e){} trendChart=null; }
+  const canvas=document.getElementById('c-trend'); if(!canvas) return;
+  if(!dashHabits.length) return;
+  const blocks=getWeekBlocks(dashWeeks);
+  const PALETTE_RGB=['232,98,42','59,130,246','34,197,94','168,85,247','245,166,35','20,184,166','239,68,68','99,102,241'];
+  const datasets=dashHabits.map((hid,i)=>{
+    const h=habits.find(h=>h.id===hid); if(!h) return null;
+    const rgb=PALETTE_RGB[i%PALETTE_RGB.length];
+    return {label:h.name,data:blocks.map(b=>habitRate(hid,b.days)),borderColor:`rgba(${rgb},1)`,backgroundColor:`rgba(${rgb},.07)`,fill:dashHabits.length===1,tension:.4,pointRadius:3,pointBackgroundColor:`rgba(${rgb},1)`,borderWidth:2.5};
+  }).filter(Boolean);
+  if(!datasets.length) return;
   setTimeout(()=>{
-    const cv = document.getElementById('c-trend'); if(!cv) return;
-    trendChart = new Chart(cv,{
-      type:'line',
-      data:{labels, datasets},
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{mode:'index',intersect:false},
-        plugins:{
-          legend:{
-            display: datasets.length>1,
-            position:'bottom',
-            labels:{font:{size:10},boxWidth:10,padding:10,color:'#888'}
-          },
-          tooltip:{
-            callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}
-          }
-        },
-        scales:{
-          y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.08)'}},
-          x:{ticks:{font:{size:9}},grid:{display:false}}
-        }
-      }
-    });
+    const cv=document.getElementById('c-trend'); if(!cv) return;
+    trendChart=new Chart(cv,{type:'line',data:{labels:blocks.map(b=>b.label),datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:datasets.length>1,position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10,color:'#888'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}}},scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
   },50);
 }
 
-// ── HEATMAP ──────────────────────────────────────────────────────────────
-function setHeatmapOffset(n){
-  heatmapOffset = Math.min(0, n); // can't go into future
-  renderHeatmap(S.habits.filter(h=>!h.archived));
-  // Update label + next button
-}
+function setHeatmapOffset(n){ heatmapOffset=Math.min(0,n); renderHeatmap(S.habits.filter(h=>!h.archived)); }
 
 function renderHeatmap(habits){
-  const el = document.getElementById('dash-heatmap'); if(!el) return;
-  const days  = getWeekDays(heatmapOffset);
-  const label = document.getElementById('heatmap-week-label');
-  const nextBtn = document.getElementById('heatmap-next-btn');
-
-  // Week label
-  const fmt = d=>{ const dt=new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
-  if(label) label.textContent = `${fmt(days[0])} – ${fmt(days[6])}`;
-  if(nextBtn) nextBtn.style.opacity = heatmapOffset===0 ? '0.3' : '1';
-
-  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-  // Build table
-  let html = `<table style="border-collapse:separate;border-spacing:3px;min-width:100%;">
-    <thead>
-      <tr>
-        <th style="text-align:left;font-size:.62rem;color:var(--tx3);font-weight:600;padding:3px 10px 3px 0;white-space:nowrap;min-width:90px;">Habit</th>
-        ${DAY_LABELS.map((d,i)=>`
-          <th style="text-align:center;font-size:.62rem;color:var(--tx3);font-weight:600;padding:3px 2px;">
-            <div>${d}</div>
-            <div style="font-size:.57rem;color:var(--tx3);opacity:.7;">${fmt(days[i]).split(' ')[0]}</div>
-          </th>`).join('')}
-      </tr>
-    </thead>
-    <tbody>`;
-
-  habits.forEach(h=>{
-    const col = habitColor(h);
-    html += `<tr>
-      <td style="font-size:.72rem;font-weight:500;padding:4px 10px 4px 0;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;">${h.name}</td>
-      ${days.map(d=>{
-        const state = getHabitState(d,h.id);
-        const future = d > new Date().toISOString().split('T')[0];
-        let bg, title;
-        if(future)         { bg='var(--bg2)'; title='future'; }
-        else if(state==='done')    { bg=col; title='done'; }
-        else if(state==='skipped') { bg='rgba(239,68,68,.22)'; title='skipped'; }
-        else               { bg='rgba(128,128,128,.12)'; title='missed'; }
-        return `<td style="text-align:center;padding:2px;">
-          <div title="${title}" style="width:28px;height:28px;border-radius:7px;background:${bg};margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:.65rem;">
-            ${state==='done'?`<span style="color:#fff;opacity:.9;">✓</span>`:state==='skipped'?'<span style="font-size:.55rem;color:rgba(239,68,68,.7);">—</span>':''}
-          </div>
-        </td>`;
-      }).join('')}
-    </tr>`;
+  const el=document.getElementById('dash-heatmap'); if(!el) return;
+  const days=getWeekDays(heatmapOffset), td=today();
+  const fmt=d=>{ const dt=new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+  const lbl=document.getElementById('heatmap-week-label'), nxt=document.getElementById('heatmap-next-btn');
+  if(lbl) lbl.textContent=`${fmt(days[0])} – ${fmt(days[6])}`;
+  if(nxt) nxt.style.opacity=heatmapOffset===0?'0.3':'1';
+  const DAY_LABELS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const groups=habitGroups(habits);
+  let html=`<table style="border-collapse:separate;border-spacing:3px;min-width:100%;"><thead><tr>
+    <th style="text-align:left;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 10px 3px 0;min-width:100px;">Habit</th>
+    ${DAY_LABELS.map((d,i)=>`<th style="text-align:center;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 2px;min-width:34px;"><div>${d}</div><div style="font-size:.54rem;opacity:.6;">${fmt(days[i]).split(' ')[0]}</div></th>`).join('')}
+  </tr></thead><tbody>`;
+  groups.forEach(g=>{
+    html+=`<tr><td colspan="8" style="padding:8px 0 3px;font-size:.62rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.07em;">${g.label}</td></tr>`;
+    g.habits.forEach(h=>{
+      const col=habitColor(h);
+      html+=`<tr><td style="font-size:.72rem;padding:2px 10px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;">${h.name}</td>
+        ${days.map(d=>{
+          const state=getHabitState(d,h.id), future=d>td;
+          let bg='rgba(128,128,128,.1)', icon='';
+          if(future){ bg='var(--bg2)'; }
+          else if(state==='done'){ bg=col; icon='<span style="color:#fff;font-size:.6rem;">✓</span>'; }
+          else if(state==='skipped'){ bg='rgba(239,68,68,.18)'; icon='<span style="font-size:.55rem;color:rgba(239,68,68,.6);">—</span>'; }
+          return `<td style="text-align:center;padding:2px;"><div style="width:30px;height:28px;border-radius:6px;background:${bg};margin:0 auto;display:flex;align-items:center;justify-content:center;">${icon}</div></td>`;
+        }).join('')}
+      </tr>`;
+    });
   });
-
-  html += `</tbody></table>`;
-  el.innerHTML = html;
+  html+=`</tbody></table>`;
+  el.innerHTML=html;
 }
 
 function buildTrackerCycle(){
