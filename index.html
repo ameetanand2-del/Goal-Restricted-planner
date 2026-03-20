@@ -256,6 +256,17 @@ select.inp{appearance:none;}
 
 /* habit popup */
 #habit-popup{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);align-items:flex-end;flex-direction:column;justify-content:flex-end;}
+
+/* done today section */
+.done-section{margin-top:12px;border:1px solid rgba(34,197,94,.2);border-radius:var(--r);overflow:hidden;}
+.done-section-hdr{display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(34,197,94,.06);cursor:pointer;user-select:none;}
+.done-section-hdr:active{background:rgba(34,197,94,.1);}
+.done-section-body{padding:8px;background:rgba(34,197,94,.02);}
+.done-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;}
+.done-item:last-child{margin-bottom:0;}
+.done-item-label{flex:1;font-size:.78rem;color:var(--tx3);text-decoration:line-through;}
+.done-item-type{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:4px;}
+.done-item-undo{font-size:.65rem;color:var(--blue);padding:4px 10px;border-radius:6px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.15);}
 </style>
 </head>
 <body>
@@ -329,7 +340,7 @@ select.inp{appearance:none;}
     <div class="hname">Good morning, <b>Ameet</b></div>
     <div class="hwk" id="h-sub">Working in flexible mode</div>
     <div class="sg3">
-      <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Habits</div></div>
+      <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
       <div class="stile"><div class="sv" id="hstreak" style="color:var(--blue)">0</div><div class="slb">Streak</div></div>
       <div class="stile" onclick="openDueDateEditor()" style="cursor:pointer;">
         <div class="sv" id="hwleft" style="color:var(--a2);font-size:.62rem;font-weight:700;line-height:1.3;">—</div>
@@ -367,6 +378,9 @@ select.inp{appearance:none;}
 
   <button class="complete-day-btn locked" id="complete-day-btn" onclick="completeDay()">&#128274; Complete Day</button>
   <div style="font-size:.66rem;color:var(--tx3);text-align:center;margin-top:6px;" id="lock-hint">Address all habits to unlock</div>
+
+  <!-- Done today section -->
+  <div id="done-today-section"></div>
 
 </div></div>
 
@@ -482,7 +496,7 @@ select.inp{appearance:none;}
         <button class="btn btr" onclick="clearData()">Clear all</button>
       </div>
     </div>
-    <div style="text-align:center;padding:20px 0;font-size:.7rem;color:var(--tx3);">Ameet 2026 · v38.0</div>
+    <div style="text-align:center;padding:20px 0;font-size:.7rem;color:var(--tx3);">Ameet 2026 · v39.0</div>
   </div>
 
 </div></div>
@@ -557,6 +571,7 @@ def('completedDayAt',null);
 def('lastActiveDate',null);
 def('eodQuestions',[]);
 def('reflectionJournal',{}); // {date: [{qid, question, answer}]}
+def('dailyTaskOrder',[]); // [taskId, taskId, ...] — persistent task order in daily view
 
 function save(){ localStorage.setItem('a26v38', JSON.stringify(S)); }
 function today(){
@@ -684,6 +699,7 @@ function buildDailyView(){
   buildDailyHabits();
   buildDailyTasks();
   buildEodSection();
+  buildDoneSection();
   updateRing();
   updateHeroStats();
   updateCompleteDayBtn();
@@ -691,17 +707,32 @@ function buildDailyView(){
 
 function buildDailyHabits(){
   const el = document.getElementById('daily-habits-list'); if(!el) return;
-  const habits = getActiveHabits();
+  const allHabits = getActiveHabits();
   const td = today();
   const locked = S.completedDays.includes(td);
+  
+  // Filter to only show habits that are NOT done (show null and skipped)
+  const habits = allHabits.filter(h => getHabitState(td, h.id) !== 'done');
 
   if(!habits.length){
-    el.innerHTML = `<div class="card" style="text-align:center;padding:20px;">
-      <div style="font-size:1.4rem;margin-bottom:8px;">🌱</div>
-      <div style="font-size:.85rem;font-weight:600;margin-bottom:5px;">No habits yet</div>
-      <div style="font-size:.75rem;color:var(--tx2);margin-bottom:13px;">Add a habit in Settings to start tracking.</div>
-      <button class="btn btp" onclick="goTab('settings',document.getElementById('nb-settings'));openQuickAdd('habit')">+ Add habit</button>
-    </div>`;
+    const hasDone = allHabits.some(h => getHabitState(td, h.id) === 'done');
+    if(hasDone){
+      // All habits are done - show encouraging message
+      el.innerHTML = `<div class="card cg" style="text-align:center;padding:20px;">
+        <div style="font-size:1.4rem;margin-bottom:8px;">🎉</div>
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:5px;color:var(--green);">All habits done!</div>
+        <div style="font-size:.75rem;color:var(--tx2);">Check the "Done today" section below to review.</div>
+      </div>`;
+    } else if(!allHabits.length){
+      el.innerHTML = `<div class="card" style="text-align:center;padding:20px;">
+        <div style="font-size:1.4rem;margin-bottom:8px;">🌱</div>
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:5px;">No habits yet</div>
+        <div style="font-size:.75rem;color:var(--tx2);margin-bottom:13px;">Add a habit in Settings to start tracking.</div>
+        <button class="btn btp" onclick="goTab('settings',document.getElementById('nb-settings'));openQuickAdd('habit')">+ Add habit</button>
+      </div>`;
+    } else {
+      el.innerHTML = '';
+    }
     return;
   }
 
@@ -717,21 +748,19 @@ function buildDailyHabits(){
   let gCount = 0;
   Object.values(groups).forEach(g=>{
     ensureOrder(g.habits);
-    const doneCount = g.habits.filter(h=>getHabitState(td,h.id)==='done').length;
+    const skippedCount = g.habits.filter(h=>getHabitState(td,h.id)==='skipped').length;
     const totalCount = g.habits.length;
-    const allDone = doneCount===totalCount;
     const col = g.color;
     const bodyId = 'hgrp-'+gCount;
-    // Auto-open if any habit not yet addressed, keep closed if all done
-    const startOpen = !locked && !allDone;
+    // Always open since these are incomplete habits
+    const startOpen = !locked;
     const rows = g.habits.map(h=>renderHabitRow(h,td,locked)).join('');
     gHtml += `<div style="margin-bottom:8px;border:1px solid ${col}22;border-radius:var(--r2);overflow:hidden;">
       <div onclick="toggleSection('${bodyId}')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${col}10;user-select:none;">
         <div style="width:6px;height:6px;border-radius:50%;background:${col};flex-shrink:0;"></div>
         <div style="flex:1;font-size:.78rem;font-weight:700;">${g.label}</div>
         <div style="display:flex;align-items:center;gap:7px;">
-          <span style="font-size:.67rem;font-weight:700;color:${allDone?'var(--green)':col};">${doneCount}/${totalCount}</span>
-          ${allDone?'<span style="font-size:.7rem;">✅</span>':''}
+          <span style="font-size:.67rem;font-weight:700;color:${col};">${totalCount} left${skippedCount?' · '+skippedCount+' skipped':''}</span>
           <span style="font-size:.62rem;color:var(--tx3);">▾</span>
         </div>
       </div>
@@ -781,7 +810,7 @@ function toggleHab(habId){
   const cur = getHabitState(td,habId);
   const next = cur===null?'done':cur==='done'?'skipped':null;
   setHabitState(td,habId,next);
-  buildDailyHabits(); updateRing(); updateHeroStats(); updateCompleteDayBtn();
+  buildDailyHabits(); buildDoneSection(); updateRing(); updateHeroStats(); updateCompleteDayBtn();
 }
 
 function saveReason(habId){
@@ -793,25 +822,117 @@ function saveReason(habId){
 
 function buildDailyTasks(){
   const td = today();
-  // Show tasks due today or overdue and not done
-  const tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td);
+  // Show tasks due today or overdue and NOT done
+  let tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td);
   const el = document.getElementById('daily-tasks-wrap');
   const list = document.getElementById('daily-tasks-list');
   if(!tasks.length){ if(el) el.style.display='none'; return; }
   if(el) el.style.display='';
-  if(list) list.innerHTML = tasks.map(t=>{
-    const proj = t.projId?S.projects.find(p=>p.id===t.projId):null;
-    const goal = t.goalId?S.goals.find(g=>g.id===t.goalId):null;
-    const sub = proj?proj.name:goal?goal.name:'';
-    const overdue = t.dueDate < td;
-    return `<div class="task-d" onclick="toggleTask('${t.id}');buildDailyTasks();updateCompleteDayBtn()">
-      <div class="task-d-check"></div>
-      <div style="flex:1;">
-        <div class="task-d-label">${t.name}</div>
-        ${sub||overdue?`<div class="task-d-sub">${overdue&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?' · '+sub:''}</div>`:''}
-      </div>
-    </div>`;
-  }).join('');
+  
+  // Apply saved order
+  if(S.dailyTaskOrder && S.dailyTaskOrder.length){
+    tasks.sort((a,b)=>{
+      const aIdx = S.dailyTaskOrder.indexOf(a.id);
+      const bIdx = S.dailyTaskOrder.indexOf(b.id);
+      if(aIdx === -1 && bIdx === -1) return 0;
+      if(aIdx === -1) return 1;
+      if(bIdx === -1) return -1;
+      return aIdx - bIdx;
+    });
+  }
+  
+  // Group tasks by project/goal
+  const groups = {};
+  tasks.forEach(t=>{
+    const key = t.projId?'proj:'+t.projId : t.goalId?'goal:'+t.goalId : '__none';
+    if(!groups[key]) {
+      let label='', color='var(--tx3)';
+      if(t.projId){ const p=S.projects.find(p=>p.id===t.projId); label=p?p.name:'Unknown'; color=p?projectColor(p):'var(--a)'; }
+      else if(t.goalId){ const g=S.goals.find(g=>g.id===t.goalId); label=g?g.name:'Unknown'; color=g?AREA_COLORS[g.area]||'var(--a)':'var(--a)'; }
+      groups[key]={label,color,tasks:[],key};
+    }
+    groups[key].tasks.push(t);
+  });
+  
+  let html = '';
+  let gIdx = 0;
+  Object.values(groups).forEach(g=>{
+    const isUngrouped = g.key === '__none';
+    const bodyId = 'dtg-'+gIdx;
+    
+    if(isUngrouped){
+      // Ungrouped tasks are always open, no header
+      html += `<div id="${bodyId}" class="daily-task-group">
+        ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
+      </div>`;
+    } else {
+      // Grouped tasks have collapsible header (closed by default)
+      html += `<div style="margin-bottom:8px;">
+        <div onclick="toggleSection('${bodyId}')" 
+          style="display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;background:${g.color}10;border:1px solid ${g.color}22;border-radius:var(--r2);user-select:none;">
+          <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
+          <div style="flex:1;font-size:.75rem;font-weight:700;color:${g.color};">${g.label}</div>
+          <span style="font-size:.65rem;color:var(--tx3);font-weight:600;">${g.tasks.length}</span>
+          <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+        </div>
+        <div id="${bodyId}" class="daily-task-group" style="display:none;margin-top:5px;">
+          ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
+        </div>
+      </div>`;
+    }
+    gIdx++;
+  });
+  
+  if(list) list.innerHTML = html;
+  
+  // Wire drag reorder for all tasks (across groups)
+  // We'll use a single draggable list approach
+  let gi = 0;
+  Object.values(groups).forEach(g=>{
+    const groupTasks = g.tasks;
+    makeDraggable('#dtg-'+gi, ()=>groupTasks, ()=>{
+      // Save global task order
+      saveDailyTaskOrder();
+      buildDailyTasks();
+    });
+    gi++;
+  });
+}
+
+function saveDailyTaskOrder(){
+  const td = today();
+  // Get all tasks due today (including done ones for order preservation)
+  const allTodayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
+  S.dailyTaskOrder = allTodayTasks.map(t=>t.id);
+  save();
+}
+
+function renderDailyTaskRow(t){
+  const td = today();
+  const proj = t.projId?S.projects.find(p=>p.id===t.projId):null;
+  const goal = t.goalId?S.goals.find(g=>g.id===t.goalId):null;
+  const sub = proj?proj.name:goal?goal.name:'';
+  const overdue = t.dueDate < td;
+  return `<div class="task-d drag-item" data-id="${t.id}">
+    <span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.75rem;color:var(--tx3);padding:4px 5px 4px 0;">&#9776;</span>
+    <div class="task-d-check" onclick="toggleDailyTask('${t.id}')"></div>
+    <div style="flex:1;" onclick="toggleDailyTask('${t.id}')">
+      <div class="task-d-label">${t.name}</div>
+      ${sub||overdue?`<div class="task-d-sub">${overdue&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?' · '+sub:''}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function toggleDailyTask(taskId){
+  const t=S.tasks.find(t=>t.id===taskId); if(!t) return;
+  t.done=!t.done;
+  if(t.done) t.doneAt=today();
+  save();
+  buildDailyTasks();
+  buildDoneSection();
+  updateRing();
+  updateHeroStats();
+  updateCompleteDayBtn();
 }
 
 function toggleTask(taskId){
@@ -844,19 +965,118 @@ function saveEodAnswer(qid){
   save();
 }
 
+function buildDoneSection(){
+  const el = document.getElementById('done-today-section'); if(!el) return;
+  const td = today();
+  const habits = getActiveHabits();
+  
+  // Get done habits
+  const doneHabits = habits.filter(h => getHabitState(td, h.id) === 'done');
+  
+  // Get done tasks (due today or overdue, and completed)
+  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.dueDate && t.dueDate <= td);
+  
+  const totalDone = doneHabits.length + doneTasks.length;
+  
+  if(totalDone === 0){
+    el.innerHTML = '';
+    return;
+  }
+  
+  const bodyId = 'done-section-body';
+  
+  let itemsHtml = '';
+  
+  // Render done habits
+  doneHabits.forEach(h => {
+    const col = habitColor(h);
+    itemsHtml += `<div class="done-item">
+      <div style="width:5px;height:5px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+      <div class="done-item-label">${h.name}</div>
+      <span class="done-item-type" style="background:rgba(34,197,94,.1);color:var(--green);">Habit</span>
+      <button class="done-item-undo" onclick="undoHabit('${h.id}')">Undo</button>
+    </div>`;
+  });
+  
+  // Render done tasks
+  doneTasks.forEach(t => {
+    itemsHtml += `<div class="done-item">
+      <div style="width:5px;height:5px;border-radius:50%;background:var(--teal);flex-shrink:0;"></div>
+      <div class="done-item-label">${t.name}</div>
+      <span class="done-item-type" style="background:rgba(20,184,166,.1);color:var(--teal);">Task</span>
+      <button class="done-item-undo" onclick="undoTask('${t.id}')">Undo</button>
+    </div>`;
+  });
+  
+  el.innerHTML = `<div class="done-section">
+    <div class="done-section-hdr" onclick="toggleSection('${bodyId}')">
+      <span style="font-size:.85rem;">✅</span>
+      <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--green);">Done today</div>
+      <span style="font-size:.7rem;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:99px;">${totalDone}</span>
+      <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+    </div>
+    <div id="${bodyId}" class="done-section-body" style="display:none;">
+      ${itemsHtml}
+    </div>
+  </div>`;
+}
+
+function undoHabit(habId){
+  const td = today();
+  setHabitState(td, habId, null);
+  buildDailyHabits();
+  buildDoneSection();
+  updateRing();
+  updateHeroStats();
+  updateCompleteDayBtn();
+}
+
+function undoTask(taskId){
+  const t = S.tasks.find(t => t.id === taskId); if(!t) return;
+  t.done = false;
+  t.doneAt = null;
+  save();
+  buildDailyTasks();
+  buildDoneSection();
+  updateRing();
+  updateHeroStats();
+  updateCompleteDayBtn();
+}
+
 function updateRing(){
   const habits = getActiveHabits();
   const td = today();
-  let done=0, skip=0;
-  habits.forEach(h=>{ const s=getHabitState(td,h.id); if(s==='done') done++; else if(s==='skipped') skip++; });
-  const total=habits.length;
-  const pct = total?Math.round(done/total*100):0;
+  
+  let habitsDone=0, habitsSkip=0;
+  habits.forEach(h=>{ const s=getHabitState(td,h.id); if(s==='done') habitsDone++; else if(s==='skipped') habitsSkip++; });
+  const habitsTotal=habits.length;
+  
+  // Get today's tasks (due today or overdue)
+  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
+  const tasksDone = todayTasks.filter(t=>t.done).length;
+  const tasksTotal = todayTasks.length;
+  
+  // Combined totals for ring
+  const combinedDone = habitsDone + tasksDone;
+  const combinedTotal = habitsTotal + tasksTotal;
+  const pct = combinedTotal?Math.round(combinedDone/combinedTotal*100):0;
+  
   const circ=201.1;
   const fill=document.getElementById('ring-fill');
   if(fill) fill.style.strokeDashoffset=circ-(circ*pct/100);
   const rp=document.getElementById('ring-pct'); if(rp) rp.textContent=pct+'%';
   const rs=document.getElementById('ring-summary');
-  if(rs) rs.textContent = total?`${done} done · ${total-done-skip} left · ${skip} skipped`:'No habits tracked today';
+  // Show breakdown: habits + tasks
+  if(rs){
+    if(combinedTotal){
+      let parts = [];
+      if(habitsTotal) parts.push(`${habitsDone}/${habitsTotal} habits`);
+      if(tasksTotal) parts.push(`${tasksDone}/${tasksTotal} tasks`);
+      rs.textContent = parts.join(' · ');
+    } else {
+      rs.textContent = 'No habits tracked today';
+    }
+  }
 
   // Group bars by project/goal
   const bars=document.getElementById('ring-group-bars'); if(!bars) return;
@@ -882,8 +1102,17 @@ function updateRing(){
 function updateHeroStats(){
   const habits=getActiveHabits();
   const td=today();
-  const done=habits.filter(h=>getHabitState(td,h.id)==='done').length;
-  document.getElementById('hhabits').textContent=done+'/'+habits.length;
+  const habitsDone=habits.filter(h=>getHabitState(td,h.id)==='done').length;
+  
+  // Get today's tasks (due today or overdue)
+  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
+  const tasksDone = todayTasks.filter(t=>t.done).length;
+  
+  // Combined totals
+  const combinedDone = habitsDone + tasksDone;
+  const combinedTotal = habits.length + todayTasks.length;
+  
+  document.getElementById('hhabits').textContent=combinedDone+'/'+combinedTotal;
   // Streak
   let streak=0;
   for(let i=1;i<365;i++){
@@ -927,6 +1156,13 @@ function allHabitsAddressed(){
   return habits.every(h=>getHabitState(td,h.id)!==null);
 }
 
+function allTasksCompleted(){
+  const td=today();
+  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
+  if(!todayTasks.length) return true; // no tasks due = always unlocked
+  return todayTasks.every(t=>t.done);
+}
+
 function updateCompleteDayBtn(){
   const btn=document.getElementById('complete-day-btn');
   const hint=document.getElementById('lock-hint');
@@ -937,16 +1173,31 @@ function updateCompleteDayBtn(){
     if(hint) hint.textContent='';
     return;
   }
-  const ready=allHabitsAddressed();
+  const habitsReady = allHabitsAddressed();
+  const tasksReady = allTasksCompleted();
+  const ready = habitsReady && tasksReady;
   btn.className='complete-day-btn '+(ready?'unlocked':'locked');
   btn.innerHTML=ready?'&#9989; Complete Day':'&#128274; Complete Day';
-  if(hint) hint.textContent=ready?'Tap to lock in today':'Address all habits to unlock';
+  
+  // Show specific hint about what's missing
+  if(hint){
+    if(ready){
+      hint.textContent='Tap to lock in today';
+    } else if(!habitsReady && !tasksReady){
+      hint.textContent='Address all habits and complete all tasks';
+    } else if(!habitsReady){
+      hint.textContent='Address all habits to unlock';
+    } else {
+      hint.textContent='Complete all tasks to unlock';
+    }
+  }
 }
 
 function completeDay(){
   const td=today();
   if(S.completedDays.includes(td)) return;
   if(!allHabitsAddressed()){ toast('Address all habits first — mark each done or skipped'); return; }
+  if(!allTasksCompleted()){ toast('Complete all tasks due today first'); return; }
   S.completedDays.push(td);
   S.completedDayAt = new Date().toISOString();
 
@@ -1208,12 +1459,6 @@ function buildTrackerHabits(){
   const atRisk=habits.filter(h=>{ const state=getHabitState(td,h.id); if(state==='done'||state==='skipped') return false; return habitRate(h.id,thisWk)<50||(habitRate(h.id,lastWk)-habitRate(h.id,thisWk)>20); });
   const kpiC=(v,hi,lo)=>v>=hi?'var(--green)':v>=lo?'var(--a2)':'var(--red)';
 
-  let sortedHabits=[...habits];
-  if(perfSort==='streak')     sortedHabits.sort((a,b)=>habitStreak(b.id)-habitStreak(a.id));
-  if(perfSort==='completion') sortedHabits.sort((a,b)=>habitRate(a.id,thisWk)-habitRate(b.id,thisWk));
-  if(perfSort==='missed')     sortedHabits.sort((a,b)=>habitMissed(b.id,thisWk)-habitMissed(a.id,thisWk));
-  const groups=perfSort==='project'?habitGroups(sortedHabits):[{label:'All habits',color:'var(--a)',habits:sortedHabits}];
-
   el.innerHTML=`
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
     <div class="dash-kpi"><div class="dash-kpi-val" style="color:${kpiC(completedToday,totalToday,Math.floor(totalToday*.5))};">${completedToday}<span style="font-size:.62rem;font-weight:500;color:var(--tx3);">/${totalToday}</span></div><div class="dash-kpi-lbl">Done Today</div></div>
@@ -1225,36 +1470,25 @@ function buildTrackerHabits(){
 
   <div style="margin-bottom:22px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div class="sl" style="margin:0;">&#128202; Performance</div>
-      <div style="display:flex;gap:5px;align-items:center;">
-        <span style="font-size:.62rem;color:var(--tx3);">Sort:</span>
-        ${[['project','Project'],['streak','Streak'],['completion','Lowest %'],['missed','Missed']].map(([v,l])=>`<button class="btn btsm ${perfSort===v?'btp':'btgh'}" onclick="setPerfSort('${v}')">${l}</button>`).join('')}
-      </div>
-    </div>
-    <div id="perf-accordion"></div>
-  </div>
-
-  <div style="margin-bottom:22px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div class="sl" style="margin:0;">&#128200; Weekly Trend</div>
+      <div class="sl" style="margin:0;">&#128200; Daily Trend</div>
       <div style="display:flex;gap:5px;">${[4,6,8,12].map(n=>`<button class="btn btsm ${n===dashWeeks?'btp':'btgh'}" onclick="setDashWeeks(${n})">${n}w</button>`).join('')}</div>
     </div>
     <div style="position:relative;margin-bottom:10px;">
-      <button onclick="toggleTrendDrop()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);font-size:.78rem;color:var(--tx2);">
-        <span id="trend-drop-label">${dashHabits.length===0?'Select habits to compare…':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`}</span>
+      <button onclick="toggleTrendDrop()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);font-size:.78rem;color:var(--tx2);">
+        <span id="trend-drop-label">${dashHabits.length===0?'Default: daily completion count':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`}</span>
         <span style="font-size:.7rem;color:var(--tx3);">▾</span>
       </button>
-      <div id="trend-drop-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);box-shadow:0 8px 32px rgba(0,0,0,.14);max-height:260px;overflow-y:auto;">
+      <div id="trend-drop-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);box-shadow:0 8px 32px rgba(0,0,0,.18);max-height:260px;overflow-y:auto;">
         <div style="padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;gap:8px;">
-          <button class="btn btsm btgh" onclick="clearTrendHabits()" style="flex:1;">Clear all</button>
+          <button class="btn btsm btgh" onclick="clearTrendHabits()" style="flex:1;">Reset to default</button>
         </div>
         <div id="trend-drop-list"></div>
       </div>
     </div>
-    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;">
+    <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;">
       <div style="height:170px;position:relative;"><canvas id="c-trend"></canvas></div>
     </div>
-    ${dashHabits.length===0?'<div style="text-align:center;font-size:.72rem;color:var(--tx3);margin-top:7px;">Select habits above to see trend lines</div>':''}
+    <div style="text-align:center;font-size:.68rem;color:var(--tx3);margin-top:7px;">${dashHabits.length===0?'Showing daily habits completed vs target · Select habits above to compare individual trends':''}</div>
   </div>
 
   <div style="margin-bottom:20px;">
@@ -1270,7 +1504,6 @@ function buildTrackerHabits(){
   </div>
   `;
 
-  renderPerfAccordion(groups,thisWk,lastWk);
   renderTrendDropList(habits);
   renderTrendChart(habits);
   renderHeatmap(habits);
@@ -1351,14 +1584,14 @@ function selectProjectHabits(ids){
 }
 function updateTrendDropLabel(){
   const lbl=document.getElementById('trend-drop-label');
-  if(lbl) lbl.textContent=dashHabits.length===0?'Select habits to compare…':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`;
+  if(lbl) lbl.textContent=dashHabits.length===0?'Default: daily completion count':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`;
 }
 function renderTrendDropList(habits){
   const el=document.getElementById('trend-drop-list'); if(!el) return;
   const groups=habitGroups(habits);
   el.innerHTML=groups.map(g=>{
     const ids=g.habits.map(h=>h.id);
-    return `<div style="padding:7px 12px 3px;border-bottom:1px solid var(--bdr);">
+    return `<div style="padding:7px 12px 3px;border-bottom:1px solid var(--bdr);background:var(--bg);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
         <div style="font-size:.63rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.07em;">${g.label}</div>
         <button class="btn btsm btgh" onclick="selectProjectHabits(${JSON.stringify(ids)})" style="font-size:.58rem;padding:2px 7px;">Select all</button>
@@ -1367,8 +1600,8 @@ function renderTrendDropList(habits){
         const active=dashHabits.includes(h.id);
         return `<div onclick="toggleTrendHabit('${h.id}')" style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;border-radius:6px;${active?'background:'+g.color+'14;':''}">
           <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${active?g.color:'var(--bdr)'};background:${active?g.color:'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${active?'<span style="color:#fff;font-size:.55rem;">✓</span>':''}</div>
-          <div style="font-size:.78rem;${active?'font-weight:600;':'color:var(--tx2);'}">${h.name}</div>
-          <div style="font-size:.6rem;color:var(--tx3);margin-left:auto;">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
+          <div style="flex:1;min-width:0;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${active?'font-weight:600;':'color:var(--tx2);'}">${h.name}</div>
+          <div style="font-size:.6rem;color:var(--tx3);flex-shrink:0;">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
         </div>`;
       }).join('')}
     </div>`;
@@ -1380,13 +1613,84 @@ function setDashWeeks(n){ dashWeeks=n; buildTrackerHabits(); }
 function renderTrendChart(habits){
   if(trendChart){ try{trendChart.destroy();}catch(e){} trendChart=null; }
   const canvas=document.getElementById('c-trend'); if(!canvas) return;
-  if(!dashHabits.length) return;
+  
   const blocks=getWeekBlocks(dashWeeks);
+  const totalHabits = habits.length;
+  
+  // Default view: daily completion count with target line
+  if(!dashHabits.length){
+    // Calculate daily completion counts for each day across all weeks
+    const allDays = blocks.flatMap(b => b.days);
+    const labels = allDays.map(d => {
+      const dt = new Date(d + 'T12:00:00');
+      return dt.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+    });
+    
+    const dailyCounts = allDays.map(day => {
+      return habits.filter(h => getHabitState(day, h.id) === 'done').length;
+    });
+    
+    const datasets = [
+      {
+        label: 'Habits completed',
+        data: dailyCounts,
+        borderColor: 'rgba(232,98,42,1)',
+        backgroundColor: 'rgba(232,98,42,.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+        pointBackgroundColor: 'rgba(232,98,42,1)',
+        borderWidth: 2.5
+      },
+      {
+        label: 'Target',
+        data: allDays.map(() => totalHabits),
+        borderColor: 'rgba(34,197,94,.6)',
+        borderDash: [6, 4],
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        tension: 0
+      }
+    ];
+    
+    setTimeout(()=>{
+      const cv=document.getElementById('c-trend'); if(!cv) return;
+      trendChart=new Chart(cv,{
+        type:'line',
+        data:{labels, datasets},
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{display:true,position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10,color:'#888'}},
+            tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}
+          },
+          scales:{
+            y:{
+              min:0,
+              max:Math.max(totalHabits + 2, Math.max(...dailyCounts) + 2),
+              ticks:{font:{size:9}, stepSize:1},
+              grid:{color:'rgba(128,128,128,.07)'}
+            },
+            x:{
+              ticks:{font:{size:8}, maxRotation:45, minRotation:45},
+              grid:{display:false}
+            }
+          }
+        }
+      });
+    },50);
+    return;
+  }
+  
+  // Individual habit comparison view (when habits are selected)
   const PALETTE_RGB=['232,98,42','59,130,246','34,197,94','168,85,247','245,166,35','20,184,166','239,68,68','99,102,241'];
   const datasets=dashHabits.map((hid,i)=>{
     const h=habits.find(h=>h.id===hid); if(!h) return null;
     const rgb=PALETTE_RGB[i%PALETTE_RGB.length];
-    return {label:h.name,data:blocks.map(b=>habitRate(hid,b.days)),borderColor:`rgba(${rgb},1)`,backgroundColor:`rgba(${rgb},.07)`,fill:dashHabits.length===1,tension:.4,pointRadius:3,pointBackgroundColor:`rgba(${rgb},1)`,borderWidth:2.5};
+    return {label:h.name,data:blocks.map(b=>habitRate(hid,b.days)),borderColor:`rgba(${rgb},1)`,backgroundColor:`rgba(${rgb},.07)`,fill:dashHabits.length===1,tension:.4,pointRadius:4,pointBackgroundColor:`rgba(${rgb},1)`,borderWidth:2.5};
   }).filter(Boolean);
   if(!datasets.length) return;
   setTimeout(()=>{
