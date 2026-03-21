@@ -537,8 +537,8 @@ select.inp{appearance:none;}
   <div id="fab-menu" style="display:none;position:absolute;bottom:60px;right:0;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:140px;">
     <div class="fab-item" onclick="setTaskFilter('all');closeFabMenu()">All</div>
     <div class="fab-item" onclick="setTaskFilter('done');closeFabMenu()">Done</div>
-    <div class="fab-item" onclick="setTaskFilter('today');closeFabMenu()">Today</div>
     <div class="fab-item" onclick="setTaskFilter('open');closeFabMenu()">Open</div>
+    <div class="fab-item" onclick="setTaskFilter('today');closeFabMenu()">Today</div>
     <div class="fab-item fab-item-add" onclick="openTaskAddModal();closeFabMenu()">+ Add Task</div>
   </div>
   <button class="fab" onclick="toggleFabMenu()">+</button>
@@ -985,12 +985,13 @@ function buildDailyTasks(){
         </div>`;
       } else {
         // Grouped tasks have collapsible header (closed by default)
+        const leftCount = g.tasks.filter(t => !t.done).length;
         html += `<div style="margin-bottom:8px;">
           <div onclick="toggleSection('${bodyId}')" 
             style="display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;background:${g.color}10;border:1px solid ${g.color}22;border-radius:var(--r2);user-select:none;">
             <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
             <div style="flex:1;font-size:.75rem;font-weight:700;color:${g.color};">${g.label}</div>
-            <span style="font-size:.65rem;color:var(--tx3);font-weight:600;">${g.tasks.length}</span>
+            <span style="font-size:.62rem;color:var(--teal);font-weight:700;">${leftCount} left</span>
             <span style="font-size:.62rem;color:var(--tx3);">▾</span>
           </div>
           <div id="${bodyId}" class="daily-task-group" style="display:none;margin-top:5px;">
@@ -1392,7 +1393,7 @@ function completeDay(){
 
 // ── TASKS TAB ────────────────────────────────────────────────────────────
 function buildWeeklyView(){ buildTasksList(); } // called from goTab('plan')
-let taskFilter = 'open';
+let taskFilter = 'today';
 let taskGrouped = true;
 
 function setTaskFilter(f, el){
@@ -2004,8 +2005,11 @@ function renderSelectedDayDetails(day, habits){
       <div class="pb" style="height:5px;margin:0;"><div class="pf" style="width:100%;background:${tasksColor};"></div></div>
     </div>` : ''}`;
   
-  // Skipped section
-  if(dayData.skippedHabits.length > 0){
+  // Only show skipped and missed for past days (not today)
+  const isToday = day === today();
+  
+  // Skipped section (only for past days)
+  if(!isToday && dayData.skippedHabits.length > 0){
     html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:8px;">
       <div style="font-size:.65rem;font-weight:600;color:var(--a2);margin-bottom:5px;">— Skipped (${dayData.skippedHabits.length})</div>`;
     dayData.skippedHabits.forEach(h => {
@@ -2014,8 +2018,8 @@ function renderSelectedDayDetails(day, habits){
     html += `</div>`;
   }
   
-  // Missed section
-  if(dayData.missedHabits.length > 0){
+  // Missed section (only for past days)
+  if(!isToday && dayData.missedHabits.length > 0){
     html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;">
       <div style="font-size:.65rem;font-weight:600;color:var(--red);margin-bottom:5px;">✗ Missed (${dayData.missedHabits.length})</div>`;
     dayData.missedHabits.forEach(h => {
