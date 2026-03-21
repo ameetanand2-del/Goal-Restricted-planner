@@ -1594,6 +1594,8 @@ let heatmapOffset = 0;
 let trendChart    = null;
 let perfSort      = 'project';
 let trendDropOpen = false;
+let weeklyRingOffset = 0;
+let selectedRingDay = null;
 
 function localDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function getWeekDays(offset){
@@ -1628,19 +1630,50 @@ function buildTrackerHabits(){
   const el=document.getElementById('tracker-habits-content'); if(!el) return;
   const habits=S.habits.filter(h=>!h.archived);
   if(!habits.length){ el.innerHTML='<div style="text-align:center;padding:40px 0;font-size:.78rem;color:var(--tx3);">No habits yet.</div>'; return; }
-  const td=today(), thisWk=getWeekDays(0), lastWk=getWeekDays(-1);
-  const completedToday=habits.filter(h=>getHabitState(td,h.id)==='done').length;
-  const totalToday=habits.length;
-  const rateToday=totalToday?Math.round(completedToday/totalToday*100):0;
-  const streaksAlive=habits.filter(h=>habitStreak(h.id)>0).length;
-  const kpiC=(v,hi,lo)=>v>=hi?'var(--green)':v>=lo?'var(--a2)':'var(--red)';
+  const td=today();
+  const weekDays = getWeekDays(weeklyRingOffset);
+  
+  // Format week range label
+  const startDate = new Date(weekDays[0]+'T12:00:00');
+  const endDate = new Date(weekDays[6]+'T12:00:00');
+  const weekLabel = `${startDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${endDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`;
+  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
   el.innerHTML=`
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
-    <div class="dash-kpi"><div class="dash-kpi-val" style="color:${kpiC(completedToday,totalToday,Math.floor(totalToday*.5))};">${completedToday}<span style="font-size:.62rem;font-weight:500;color:var(--tx3);">/${totalToday}</span></div><div class="dash-kpi-lbl">Done Today</div></div>
-    <div class="dash-kpi"><div class="dash-kpi-val" style="color:${kpiC(rateToday,80,50)};">${rateToday}%</div><div class="dash-kpi-lbl">Rate</div></div>
-    <div class="dash-kpi"><div class="dash-kpi-val" style="color:var(--a2);">${streaksAlive}</div><div class="dash-kpi-lbl">Streaks On</div></div>
+  <!-- Weekly Rings Section -->
+  <div style="margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <button class="btn btsm btgh" onclick="setWeeklyRingOffset(weeklyRingOffset-1)">&#8592;</button>
+      <div style="font-size:.75rem;font-weight:600;color:var(--tx2);">${weekLabel}</div>
+      <button class="btn btsm btgh" id="weekly-ring-next" onclick="setWeeklyRingOffset(weeklyRingOffset+1)" ${weeklyRingOffset>=0?'style="opacity:0.3;pointer-events:none;"':''}>&#8594;</button>
+    </div>
+    <div id="weekly-rings-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+      ${weekDays.map((day,i)=>{
+        const isFuture = day > td;
+        const dayData = getDayCompletionData(day, habits);
+        const isSelected = selectedRingDay === day;
+        const ringColor = isFuture ? 'var(--bdr)' : dayData.pct >= 80 ? 'var(--green)' : dayData.pct >= 50 ? 'var(--a2)' : 'var(--a)';
+        const dayNum = new Date(day+'T12:00:00').getDate();
+        return `<div class="ring-day" data-day="${day}" data-future="${isFuture}"
+          style="display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-radius:var(--r2);cursor:${isFuture?'default':'pointer'};background:${isSelected?'rgba(232,98,42,.12)':'transparent'};border:2px solid ${isSelected?'var(--a)':'transparent'};transition:all .15s;">
+          <div style="font-size:.6rem;font-weight:600;color:${isFuture?'var(--tx3)':'var(--tx2)'};margin-bottom:4px;">${DAY_LABELS[i]}</div>
+          <div style="position:relative;width:38px;height:38px;">
+            <svg width="38" height="38" viewBox="0 0 38 38">
+              <circle cx="19" cy="19" r="15" fill="none" stroke="var(--bdr)" stroke-width="3"/>
+              <circle cx="19" cy="19" r="15" fill="none" stroke="${ringColor}" stroke-width="3" 
+                stroke-dasharray="94.2" stroke-dashoffset="${isFuture?94.2:94.2-(94.2*dayData.pct/100)}" 
+                transform="rotate(-90 19 19)" style="transition:stroke-dashoffset .3s;"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:${isFuture?'var(--tx3)':ringColor};">${isFuture?'':dayData.pct+'%'}</div>
+          </div>
+          <div style="font-size:.58rem;color:var(--tx3);margin-top:3px;">${dayNum}</div>
+        </div>`;
+      }).join('')}
+    </div>
   </div>
+  
+  <!-- Selected Day Details -->
+  <div id="selected-day-details"></div>
 
   <div style="margin-bottom:22px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -1678,9 +1711,136 @@ function buildTrackerHabits(){
   </div>
   `;
 
+  // Wire click events for ring days
+  wireRingDayClicks();
+
+  // Render selected day details if any
+  if(selectedRingDay){
+    renderSelectedDayDetails(selectedRingDay, habits);
+  }
+
   renderTrendDropList(habits);
   renderTrendChart(habits);
   renderHeatmap(habits);
+}
+
+function wireRingDayClicks(){
+  const grid = document.getElementById('weekly-rings-grid');
+  if(!grid) return;
+  grid.querySelectorAll('.ring-day').forEach(el => {
+    if(el.dataset.future === 'true') return;
+    el.addEventListener('click', () => {
+      selectRingDay(el.dataset.day);
+    });
+  });
+}
+
+function getDayCompletionData(day, habits){
+  // Get habits by state
+  const doneHabits = habits.filter(h => getHabitState(day, h.id) === 'done');
+  const skippedHabits = habits.filter(h => getHabitState(day, h.id) === 'skipped');
+  const missedHabits = habits.filter(h => {
+    const state = getHabitState(day, h.id);
+    return state !== 'done' && state !== 'skipped' && day <= today();
+  });
+  const totalHabits = habits.length;
+  
+  // Get tasks completed that day
+  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.doneAt === day);
+  const totalTasks = S.tasks.filter(t => !t.archived && t.dueDate === day).length;
+  
+  const totalDone = doneHabits.length + doneTasks.length;
+  const totalItems = totalHabits + Math.max(totalTasks, doneTasks.length);
+  const pct = totalItems ? Math.round(totalDone / totalItems * 100) : 0;
+  
+  return { doneHabits, skippedHabits, missedHabits, doneTasks, totalHabits, totalTasks: doneTasks.length, pct };
+}
+
+function setWeeklyRingOffset(n){
+  weeklyRingOffset = Math.min(0, n);
+  selectedRingDay = null;
+  buildTrackerHabits();
+}
+
+function selectRingDay(day){
+  selectedRingDay = selectedRingDay === day ? null : day;
+  buildTrackerHabits();
+}
+
+function renderSelectedDayDetails(day, habits){
+  const el = document.getElementById('selected-day-details'); if(!el) return;
+  const dayData = getDayCompletionData(day, habits);
+  const dateObj = new Date(day+'T12:00:00');
+  const dateLabel = dateObj.toLocaleDateString('en-GB',{weekday:'short', day:'numeric', month:'short'});
+  
+  // Group habits by project/goal for progress bars
+  const groups = {};
+  habits.forEach(h => {
+    const key = h.projId || h.goalId || '__standalone';
+    if(!groups[key]) groups[key] = { label: groupLabel(h), color: habitColor(h), done: 0, total: 0 };
+    groups[key].total++;
+    if(getHabitState(day, h.id) === 'done') groups[key].done++;
+  });
+  const groupList = Object.values(groups);
+  
+  // Tasks stats
+  const tasksDone = dayData.doneTasks.length;
+  const tasksTotal = tasksDone; // We only know completed tasks for historical days
+  const tasksPct = tasksTotal > 0 ? 100 : 0;
+  const tasksColor = tasksPct >= 90 ? 'var(--green)' : tasksPct >= 70 ? 'var(--teal)' : 'var(--blue)';
+  
+  let html = `<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:12px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-size:.75rem;font-weight:600;color:var(--tx2);">${dateLabel}</div>
+      <div style="font-size:.65rem;color:var(--green);font-weight:600;">${dayData.doneHabits.length}/${habits.length} habits done</div>
+    </div>
+    
+    <!-- Habit Group Progress Bars -->
+    <div style="margin-bottom:10px;">
+      ${groupList.map(g => {
+        const gpct = g.total ? Math.round(g.done / g.total * 100) : 0;
+        return `<div style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+            <span style="font-size:.68rem;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">${g.label}</span>
+            <span style="font-size:.62rem;color:${g.color};font-weight:600;">${g.done}/${g.total}</span>
+          </div>
+          <div class="pb" style="height:5px;margin:0;"><div class="pf" style="width:${gpct}%;background:${g.color};"></div></div>
+        </div>`;
+      }).join('')}
+    </div>
+    
+    <!-- Tasks Progress Bar -->
+    ${tasksDone > 0 ? `
+    <div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-size:.68rem;color:var(--tx2);">📋 Tasks</span>
+        <span style="font-size:.62rem;color:${tasksColor};font-weight:600;">${tasksDone} done</span>
+      </div>
+      <div class="pb" style="height:5px;margin:0;"><div class="pf" style="width:100%;background:${tasksColor};"></div></div>
+    </div>` : ''}`;
+  
+  // Skipped section
+  if(dayData.skippedHabits.length > 0){
+    html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:8px;">
+      <div style="font-size:.65rem;font-weight:600;color:var(--a2);margin-bottom:5px;">— Skipped (${dayData.skippedHabits.length})</div>`;
+    dayData.skippedHabits.forEach(h => {
+      html += `<div style="font-size:.72rem;color:var(--tx3);padding:3px 0;text-decoration:line-through;">${h.name}</div>`;
+    });
+    html += `</div>`;
+  }
+  
+  // Missed section
+  if(dayData.missedHabits.length > 0){
+    html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;">
+      <div style="font-size:.65rem;font-weight:600;color:var(--red);margin-bottom:5px;">✗ Missed (${dayData.missedHabits.length})</div>`;
+    dayData.missedHabits.forEach(h => {
+      html += `<div style="font-size:.72rem;color:var(--tx2);padding:3px 0;">${h.name}</div>`;
+    });
+    html += `</div>`;
+  }
+  
+  html += `</div>`;
+  el.innerHTML = html;
 }
 
 function setPerfSort(s){ perfSort=s; buildTrackerHabits(); }
