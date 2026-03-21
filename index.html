@@ -885,6 +885,47 @@ function buildCommitSection(){
   const allHabits = getActiveHabits();
   const habits = allHabits.filter(h => shouldShowHabitToday(h));
   
+  // Group tasks by Goal → Project
+  const taskGroups = {};
+  tasks.forEach(t => {
+    let goalId = '__none';
+    let goalName = 'No Goal';
+    let projId = '__none';
+    let projName = 'No Project';
+    
+    if(t.projId){
+      const proj = S.projects.find(p => p.id === t.projId);
+      if(proj){
+        projId = proj.id;
+        projName = proj.name;
+        if(proj.goalId){
+          const goal = S.goals.find(g => g.id === proj.goalId);
+          if(goal){
+            goalId = goal.id;
+            goalName = goal.name;
+          }
+        }
+      }
+    } else if(t.goalId){
+      const goal = S.goals.find(g => g.id === t.goalId);
+      if(goal){
+        goalId = goal.id;
+        goalName = goal.name;
+      }
+    }
+    
+    const gKey = goalId;
+    const pKey = goalId + '|' + projId;
+    
+    if(!taskGroups[gKey]){
+      taskGroups[gKey] = { goalId, goalName, projects: {} };
+    }
+    if(!taskGroups[gKey].projects[pKey]){
+      taskGroups[gKey].projects[pKey] = { projId, projName, tasks: [] };
+    }
+    taskGroups[gKey].projects[pKey].tasks.push(t);
+  });
+  
   let html = `<div style="background:linear-gradient(135deg,rgba(232,98,42,.08),rgba(232,98,42,.02));border:2px solid var(--a);border-radius:var(--r);padding:16px;margin-bottom:16px;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:1.4rem;">🎯</span>
@@ -894,34 +935,96 @@ function buildCommitSection(){
       </div>
     </div>`;
   
-  // Tasks section
+  // Tasks section - grouped by Goal → Project
   if(tasks.length){
     html += `<div style="margin-bottom:14px;">
-      <div style="font-size:.72rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">📋 Tasks to commit to:</div>`;
-    tasks.forEach(t => {
-      const proj = t.projId ? S.projects.find(p=>p.id===t.projId) : null;
-      const projName = proj ? proj.name : '';
-      html += `<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:pointer;">
-        <input type="checkbox" id="commit-task-${t.id}" checked style="margin-top:3px;accent-color:var(--a);">
-        <div style="flex:1;">
-          <div style="font-size:.8rem;font-weight:500;">${t.name}</div>
-          ${projName ? `<div style="font-size:.62rem;color:var(--tx3);">${projName}</div>` : ''}
-        </div>
-      </label>`;
+      <div style="font-size:.72rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">📋 Tasks to commit to (${tasks.length}):</div>`;
+    
+    // Sort goals: "No Goal" last
+    const sortedGoalKeys = Object.keys(taskGroups).sort((a,b) => {
+      if(a === '__none') return 1;
+      if(b === '__none') return -1;
+      return taskGroups[a].goalName.localeCompare(taskGroups[b].goalName);
     });
+    
+    sortedGoalKeys.forEach((gKey, gIdx) => {
+      const group = taskGroups[gKey];
+      const goalBodyId = 'commit-goal-' + gIdx;
+      const goalTaskCount = Object.values(group.projects).reduce((sum, p) => sum + p.tasks.length, 0);
+      const goalColor = gKey !== '__none' ? (AREA_COLORS[S.goals.find(g=>g.id===gKey)?.area] || 'var(--a)') : 'var(--tx3)';
+      
+      html += `<div style="margin-bottom:6px;border:1px solid var(--bdr);border-radius:var(--r2);overflow:hidden;">
+        <div onclick="toggleSection('${goalBodyId}')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);cursor:pointer;user-select:none;">
+          <span style="font-size:.7rem;color:var(--tx3);">▶</span>
+          <div style="width:6px;height:6px;border-radius:50%;background:${goalColor};flex-shrink:0;"></div>
+          <div style="flex:1;font-size:.78rem;font-weight:600;color:var(--tx);">${group.goalName}</div>
+          <span style="font-size:.65rem;color:var(--tx3);font-weight:600;">${goalTaskCount} task${goalTaskCount>1?'s':''}</span>
+        </div>
+        <div id="${goalBodyId}" style="display:none;background:var(--sur);">`;
+      
+      // Sort projects: "No Project" last
+      const sortedProjKeys = Object.keys(group.projects).sort((a,b) => {
+        const pA = group.projects[a];
+        const pB = group.projects[b];
+        if(pA.projId === '__none') return 1;
+        if(pB.projId === '__none') return -1;
+        return pA.projName.localeCompare(pB.projName);
+      });
+      
+      sortedProjKeys.forEach((pKey, pIdx) => {
+        const proj = group.projects[pKey];
+        const projBodyId = 'commit-proj-' + gIdx + '-' + pIdx;
+        const projColor = proj.projId !== '__none' ? (projectColor(S.projects.find(p=>p.id===proj.projId)) || 'var(--teal)') : 'var(--tx3)';
+        
+        html += `<div style="border-top:1px solid var(--bdr);">
+          <div onclick="toggleSection('${projBodyId}')" style="display:flex;align-items:center;gap:8px;padding:8px 12px 8px 24px;cursor:pointer;user-select:none;">
+            <span style="font-size:.65rem;color:var(--tx3);">▶</span>
+            <div style="width:5px;height:5px;border-radius:50%;background:${projColor};flex-shrink:0;"></div>
+            <div style="flex:1;font-size:.72rem;font-weight:500;color:var(--tx2);">${proj.projName}</div>
+            <span style="font-size:.6rem;color:var(--tx3);">${proj.tasks.length}</span>
+          </div>
+          <div id="${projBodyId}" style="display:none;padding:4px 12px 8px 36px;">`;
+        
+        proj.tasks.forEach(t => {
+          html += `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="commit-task-${t.id}" checked style="accent-color:var(--a);width:16px;height:16px;">
+            <span style="font-size:.75rem;flex:1;">${t.name}</span>
+          </label>`;
+        });
+        
+        html += `</div></div>`;
+      });
+      
+      html += `</div></div>`;
+    });
+    
     html += `</div>`;
   } else {
     html += `<div style="font-size:.75rem;color:var(--tx3);margin-bottom:14px;">No tasks due today.</div>`;
   }
   
-  // Habits section (display only, not selectable)
+  // Habits section - collapsible for skipping
   if(habits.length){
-    html += `<div style="margin-bottom:14px;">
-      <div style="font-size:.72rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">✨ Today's habits (${habits.length}):</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;">`;
+    const skipBodyId = 'commit-skip-habits';
+    html += `<div style="margin-bottom:14px;border:1px solid var(--bdr);border-radius:var(--r2);overflow:hidden;">
+      <div onclick="toggleSection('${skipBodyId}')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);cursor:pointer;user-select:none;">
+        <span style="font-size:.7rem;color:var(--tx3);">▶</span>
+        <span style="font-size:.85rem;">⏭️</span>
+        <div style="flex:1;font-size:.78rem;font-weight:600;color:var(--tx);">Skip habits for today</div>
+        <span style="font-size:.65rem;color:var(--tx3);">${habits.length} habit${habits.length>1?'s':''}</span>
+      </div>
+      <div id="${skipBodyId}" style="display:none;padding:8px 12px;background:var(--sur);">
+        <div style="font-size:.65rem;color:var(--tx3);margin-bottom:8px;">Check habits you want to skip today:</div>`;
+    
     habits.forEach(h => {
-      html += `<span style="font-size:.7rem;padding:4px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:99px;color:var(--tx2);">${h.name}</span>`;
+      const col = habitColor(h);
+      html += `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:4px;cursor:pointer;">
+        <input type="checkbox" id="commit-skip-${h.id}" style="accent-color:var(--a2);width:16px;height:16px;">
+        <div style="width:5px;height:5px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <span style="font-size:.75rem;flex:1;">${h.name}</span>
+      </label>`;
     });
+    
     html += `</div></div>`;
   }
   
@@ -942,6 +1045,16 @@ function commitToday(){
   S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t)).forEach(t => {
     const cb = document.getElementById('commit-task-'+t.id);
     if(cb && cb.checked) taskIds.push(t.id);
+  });
+  
+  // Mark skipped habits
+  const allHabits = getActiveHabits();
+  const habits = allHabits.filter(h => shouldShowHabitToday(h));
+  habits.forEach(h => {
+    const cb = document.getElementById('commit-skip-'+h.id);
+    if(cb && cb.checked){
+      setHabitState(td, h.id, 'skipped');
+    }
   });
   
   // Initialize commitments object if needed
@@ -3089,8 +3202,8 @@ function saveProjectEdit(projId){
 const REWARD_CONDITIONS = {
   commitment_streak: { label: 'Commitment streak', unit: 'days', icon: '🎯' },
   habit_streak: { label: 'Habit streak', unit: 'days', icon: '🔥', needsTarget: true },
-  goal_complete: { label: 'Complete goal', unit: '', icon: '🏆', needsTarget: true },
-  project_complete: { label: 'Complete projects', unit: 'projects', icon: '📁' },
+  goal_complete: { label: 'Complete goal', unit: 'projects', icon: '🏆', needsTarget: true },
+  project_complete: { label: 'Complete projects', unit: 'projects', icon: '📁', needsMultiTarget: true },
   habit_count: { label: 'Habit check-ins', unit: 'times', icon: '✅', needsTarget: true }
 };
 
@@ -3130,14 +3243,19 @@ function getRewardProgress(reward){
         current = getHabitStreak(cond.targetId);
         break;
       case 'goal_complete':
-        const goal = S.goals.find(g => g.id === cond.targetId);
-        const projs = S.projects.filter(p => p.goalId === cond.targetId && !p.archived);
-        const doneProjs = projs.filter(p => p.status === 'complete').length;
-        current = (projs.length > 0 && doneProjs === projs.length) ? 1 : 0;
-        target = 1;
+        // Progress based on % of projects completed under this goal
+        const goalProjs = S.projects.filter(p => p.goalId === cond.targetId && !p.archived);
+        const goalDoneProjs = goalProjs.filter(p => p.status === 'complete').length;
+        current = goalDoneProjs;
+        target = goalProjs.length || 1; // Avoid division by zero
         break;
       case 'project_complete':
-        current = S.projects.filter(p => p.status === 'complete' && !p.archived).length;
+        // Multi-project selection: count how many selected projects are complete
+        const selectedProjIds = cond.targetIds || (cond.targetId ? [cond.targetId] : []);
+        const selectedProjs = S.projects.filter(p => selectedProjIds.includes(p.id) && !p.archived);
+        const completedSelected = selectedProjs.filter(p => p.status === 'complete').length;
+        current = completedSelected;
+        target = selectedProjs.length || 1;
         break;
       case 'habit_count':
         current = getHabitTotalCount(cond.targetId);
@@ -3316,6 +3434,9 @@ function buildRewardsList(){
       } else if(cond.type === 'goal_complete'){
         const goal = S.goals.find(g => g.id === cond.targetId);
         targetLabel = goal ? ` (${goal.name})` : '';
+      } else if(cond.type === 'project_complete' && cond.targetIds){
+        const count = cond.targetIds.length;
+        targetLabel = ` (${count} project${count>1?'s':''})`;
       }
       
       return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -3421,6 +3542,12 @@ function openAddReward(){
       </div>
     </div>
     
+    <div id="rw-multi-target-wrap" style="display:none;">
+      <div class="igrp"><label class="ilbl" id="rw-multi-target-label">Select projects</label>
+        <div id="rw-multi-target-list" style="max-height:180px;overflow-y:auto;border:1px solid var(--bdr);border-radius:var(--r2);padding:8px;"></div>
+      </div>
+    </div>
+    
     <div id="rw-value-wrap" style="display:none;">
       <div class="igrp"><label class="ilbl" id="rw-value-label">Value</label>
         <input class="inp" type="number" id="rw-value" min="1" value="7"/>
@@ -3434,20 +3561,46 @@ function openAddReward(){
 function updateRewardConditionUI(){
   const type = document.getElementById('rw-type')?.value;
   const targetWrap = document.getElementById('rw-target-wrap');
+  const multiTargetWrap = document.getElementById('rw-multi-target-wrap');
   const valueWrap = document.getElementById('rw-value-wrap');
   const targetSel = document.getElementById('rw-target');
   const valueLabel = document.getElementById('rw-value-label');
   
   if(!type){
     if(targetWrap) targetWrap.style.display = 'none';
+    if(multiTargetWrap) multiTargetWrap.style.display = 'none';
     if(valueWrap) valueWrap.style.display = 'none';
     return;
   }
   
   const cond = REWARD_CONDITIONS[type];
   
-  // Show target selector for habit/goal specific conditions
-  if(cond.needsTarget){
+  // Hide both target sections first
+  targetWrap.style.display = 'none';
+  multiTargetWrap.style.display = 'none';
+  
+  // Show multi-select for project_complete
+  if(cond.needsMultiTarget){
+    multiTargetWrap.style.display = 'block';
+    const projects = S.projects.filter(p => !p.archived && p.status !== 'complete');
+    const multiList = document.getElementById('rw-multi-target-list');
+    
+    if(projects.length){
+      multiList.innerHTML = projects.map(p => {
+        const goal = p.goalId ? S.goals.find(g => g.id === p.goalId) : null;
+        const goalLabel = goal ? ` <span style="font-size:.6rem;color:var(--tx3);">(${goal.name})</span>` : '';
+        return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid var(--bdr);">
+          <input type="checkbox" class="rw-proj-check" value="${p.id}" style="width:16px;height:16px;"/>
+          <span style="font-size:.78rem;">${p.name}${goalLabel}</span>
+        </label>`;
+      }).join('');
+    } else {
+      multiList.innerHTML = '<div style="font-size:.72rem;color:var(--tx3);padding:8px;">No active projects available</div>';
+    }
+    valueWrap.style.display = 'none';
+  }
+  // Show single target selector for habit/goal specific conditions
+  else if(cond.needsTarget){
     targetWrap.style.display = 'block';
     let options = '<option value="">— Select —</option>';
     
@@ -3462,12 +3615,10 @@ function updateRewardConditionUI(){
     }
     
     targetSel.innerHTML = options;
-  } else {
-    targetWrap.style.display = 'none';
   }
   
-  // Show value input (except for goal_complete which is binary)
-  if(type !== 'goal_complete'){
+  // Show value input for streaks and counts (not for goal_complete or project_complete)
+  if(type !== 'goal_complete' && type !== 'project_complete'){
     valueWrap.style.display = 'block';
     valueLabel.textContent = `Number of ${cond.unit}`;
   } else {
@@ -3484,14 +3635,23 @@ function saveNewReward(){
   
   const cond = REWARD_CONDITIONS[type];
   let targetId = null;
+  let targetIds = null;
   let value = 1;
   
-  if(cond.needsTarget){
+  // Multi-select for projects
+  if(cond.needsMultiTarget){
+    const checkboxes = document.querySelectorAll('.rw-proj-check:checked');
+    targetIds = Array.from(checkboxes).map(cb => cb.value);
+    if(!targetIds.length){ toast('Select at least one project'); return; }
+  }
+  // Single select for habits/goals
+  else if(cond.needsTarget){
     targetId = document.getElementById('rw-target')?.value;
     if(!targetId){ toast('Select a target'); return; }
   }
   
-  if(type !== 'goal_complete'){
+  // Value only for streaks and counts
+  if(type !== 'goal_complete' && type !== 'project_complete'){
     value = parseInt(document.getElementById('rw-value')?.value) || 1;
     if(value < 1){ toast('Value must be at least 1'); return; }
   }
@@ -3499,7 +3659,7 @@ function saveNewReward(){
   const reward = {
     id: uid(),
     name,
-    conditions: [{ type, value, targetId }],
+    conditions: [{ type, value, targetId, targetIds }],
     status: 'active',
     unlockedAt: null,
     claimedAt: null,
