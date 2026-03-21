@@ -372,7 +372,12 @@ select.inp{appearance:none;}
 
   <!-- Today's tasks -->
   <div id="daily-tasks-wrap" style="display:none;">
-    <div class="sl">📋 Today's tasks</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="sl" style="margin:0;">📋 Today's tasks</div>
+      <button id="daily-task-group-toggle" onclick="toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+        <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
+      </button>
+    </div>
     <div id="daily-tasks-list"></div>
   </div>
 
@@ -915,6 +920,17 @@ function saveReason(habId){
   save(); toast('Reason saved ✓');
 }
 
+let dailyTaskGrouped = true;
+
+function toggleDailyTaskGrouping(){
+  dailyTaskGrouped = !dailyTaskGrouped;
+  const icon = document.getElementById('daily-task-group-icon');
+  const label = document.getElementById('daily-task-group-label');
+  if(icon) icon.textContent = dailyTaskGrouped ? '▤' : '▥';
+  if(label) label.textContent = dailyTaskGrouped ? 'Grouped' : 'Sequence';
+  buildDailyTasks();
+}
+
 function buildDailyTasks(){
   const td = today();
   // Show tasks due today or overdue and NOT done
@@ -936,62 +952,76 @@ function buildDailyTasks(){
     });
   }
   
-  // Group tasks by project/goal
-  const groups = {};
-  tasks.forEach(t=>{
-    const key = t.projId?'proj:'+t.projId : t.goalId?'goal:'+t.goalId : '__none';
-    if(!groups[key]) {
-      let label='', color='var(--tx3)';
-      if(t.projId){ const p=S.projects.find(p=>p.id===t.projId); label=p?p.name:'Unknown'; color=p?projectColor(p):'var(--a)'; }
-      else if(t.goalId){ const g=S.goals.find(g=>g.id===t.goalId); label=g?g.name:'Unknown'; color=g?AREA_COLORS[g.area]||'var(--a)':'var(--a)'; }
-      groups[key]={label,color,tasks:[],key};
-    }
-    groups[key].tasks.push(t);
-  });
-  
   let html = '';
-  let gIdx = 0;
-  Object.values(groups).forEach(g=>{
-    const isUngrouped = g.key === '__none';
-    const bodyId = 'dtg-'+gIdx;
+  
+  if(dailyTaskGrouped){
+    // Group tasks by project/goal
+    const groups = {};
+    tasks.forEach(t=>{
+      const key = t.projId?'proj:'+t.projId : t.goalId?'goal:'+t.goalId : '__none';
+      if(!groups[key]) {
+        let label='', color='var(--tx3)';
+        if(t.projId){ const p=S.projects.find(p=>p.id===t.projId); label=p?p.name:'Unknown'; color=p?projectColor(p):'var(--a)'; }
+        else if(t.goalId){ const g=S.goals.find(g=>g.id===t.goalId); label=g?g.name:'Unknown'; color=g?AREA_COLORS[g.area]||'var(--a)':'var(--a)'; }
+        groups[key]={label,color,tasks:[],key};
+      }
+      groups[key].tasks.push(t);
+    });
     
-    if(isUngrouped){
-      // Ungrouped tasks are always open, no header
-      html += `<div id="${bodyId}" class="daily-task-group">
-        ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
-      </div>`;
-    } else {
-      // Grouped tasks have collapsible header (closed by default)
-      html += `<div style="margin-bottom:8px;">
-        <div onclick="toggleSection('${bodyId}')" 
-          style="display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;background:${g.color}10;border:1px solid ${g.color}22;border-radius:var(--r2);user-select:none;">
-          <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
-          <div style="flex:1;font-size:.75rem;font-weight:700;color:${g.color};">${g.label}</div>
-          <span style="font-size:.65rem;color:var(--tx3);font-weight:600;">${g.tasks.length}</span>
-          <span style="font-size:.62rem;color:var(--tx3);">▾</span>
-        </div>
-        <div id="${bodyId}" class="daily-task-group" style="display:none;margin-top:5px;">
+    let gIdx = 0;
+    Object.values(groups).forEach(g=>{
+      const isUngrouped = g.key === '__none';
+      const bodyId = 'dtg-'+gIdx;
+      
+      if(isUngrouped){
+        // Ungrouped tasks are always open, no header
+        html += `<div id="${bodyId}" class="daily-task-group">
           ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
-        </div>
-      </div>`;
-    }
-    gIdx++;
-  });
-  
-  if(list) list.innerHTML = html;
-  
-  // Wire drag reorder for all tasks (across groups)
-  // We'll use a single draggable list approach
-  let gi = 0;
-  Object.values(groups).forEach(g=>{
-    const groupTasks = g.tasks;
-    makeDraggable('#dtg-'+gi, ()=>groupTasks, ()=>{
-      // Save global task order
+        </div>`;
+      } else {
+        // Grouped tasks have collapsible header (closed by default)
+        html += `<div style="margin-bottom:8px;">
+          <div onclick="toggleSection('${bodyId}')" 
+            style="display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;background:${g.color}10;border:1px solid ${g.color}22;border-radius:var(--r2);user-select:none;">
+            <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
+            <div style="flex:1;font-size:.75rem;font-weight:700;color:${g.color};">${g.label}</div>
+            <span style="font-size:.65rem;color:var(--tx3);font-weight:600;">${g.tasks.length}</span>
+            <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+          </div>
+          <div id="${bodyId}" class="daily-task-group" style="display:none;margin-top:5px;">
+            ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
+          </div>
+        </div>`;
+      }
+      gIdx++;
+    });
+    
+    if(list) list.innerHTML = html;
+    
+    // Wire drag reorder per group
+    let gi = 0;
+    Object.values(groups).forEach(g=>{
+      const groupTasks = g.tasks;
+      makeDraggable('#dtg-'+gi, ()=>groupTasks, ()=>{
+        saveDailyTaskOrder();
+        buildDailyTasks();
+      });
+      gi++;
+    });
+  } else {
+    // Flat list - all tasks in sequence mode
+    html = `<div id="dtg-all" class="daily-task-group">
+      ${tasks.map(t=>renderDailyTaskRow(t)).join('')}
+    </div>`;
+    
+    if(list) list.innerHTML = html;
+    
+    // Wire drag for flat list
+    makeDraggable('#dtg-all', ()=>tasks, ()=>{
       saveDailyTaskOrder();
       buildDailyTasks();
     });
-    gi++;
-  });
+  }
 }
 
 function saveDailyTaskOrder(){
