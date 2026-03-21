@@ -330,7 +330,7 @@ select.inp{appearance:none;}
 
 <div class="saft"></div>
 <div class="topbar">
-  <div class="logo">Ameet <b>2026</b></div>
+  <div class="logo" id="h-date" style="font-size:.9rem;font-weight:600;"></div>
   <div id="topbar-right" style="display:flex;align-items:center;gap:8px;"></div>
 </div>
 
@@ -339,11 +339,8 @@ select.inp{appearance:none;}
 <!-- ═══ DAILY ════════════════════════════════════════════════════════════ -->
 <div class="page on" id="page-home"><div class="pi">
 
-  <div class="hero">
-    <div class="hdate" id="h-date"></div>
-    <div class="hname">Good morning, <b>Ameet</b></div>
-    <div class="hwk" id="h-sub">Working in flexible mode</div>
-    <div class="sg3">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+    <div class="sg3" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
       <div class="stile"><div class="sv" id="hstreak" style="color:var(--blue)">0</div><div class="slb">Streak</div></div>
       <div class="stile" onclick="openDueDateEditor()" style="cursor:pointer;">
@@ -700,16 +697,6 @@ function buildDailyView(){
   const now = new Date();
   document.getElementById('h-date').textContent =
     now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
-
-  const c = getActiveCycle();
-  const sub = document.getElementById('h-sub');
-  if(c){
-    const end = new Date(c.endDate+'T23:59:59');
-    const dLeft = Math.max(0, Math.ceil((end-now)/(1000*60*60*24)));
-    sub.textContent = `Focus mode · ${dLeft} days left in cycle`;
-  } else {
-    sub.textContent = 'Flexible mode — all habits active';
-  }
 
   updateTopbarRight();
   updateWksLeftTile();
