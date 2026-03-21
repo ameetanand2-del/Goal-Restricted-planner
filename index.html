@@ -1058,8 +1058,8 @@ function renderDailyTaskRow(t){
   const overdue = t.dueDate < td;
   return `<div class="task-d drag-item" data-id="${t.id}">
     <span class="drag-handle" style="font-size:.85rem;color:var(--tx3);padding:6px 8px 6px 2px;cursor:grab;touch-action:none;">☰</span>
-    <div class="task-d-check" onclick="event.stopPropagation();toggleDailyTask('${t.id}')"></div>
-    <div style="flex:1;" onclick="toggleDailyTask('${t.id}')">
+    <div class="task-d-check" onclick="event.stopPropagation();toggleDailyTask('${t.id}')">${t.done?'✓':''}</div>
+    <div style="flex:1;">
       <div class="task-d-label drag-label">${t.name}</div>
       ${sub||overdue?`<div class="task-d-sub">${overdue&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?' · '+sub:''}</div>`:''}
     </div>
