@@ -455,6 +455,27 @@ select.inp{appearance:none;}
 
 </div></div>
 
+<!-- ═══ REWARDS ═════════════════════════════════════════════════════════ -->
+<div class="page" id="page-rewards"><div class="pi">
+
+  <!-- KPI strip -->
+  <div class="sg3" style="margin-bottom:14px;">
+    <div class="stile"><div class="sv" id="rewards-active" style="color:var(--blue)">0</div><div class="slb">Active</div></div>
+    <div class="stile"><div class="sv" id="rewards-unlocked" style="color:var(--green)">0</div><div class="slb">Unlocked</div></div>
+    <div class="stile"><div class="sv" id="rewards-claimed" style="color:var(--a)">0</div><div class="slb">Claimed</div></div>
+  </div>
+
+  <!-- Rewards list -->
+  <div id="rewards-list"></div>
+
+  <!-- Claimed history -->
+  <div id="rewards-history"></div>
+
+  <!-- Add reward button -->
+  <button onclick="openAddReward()" class="btn btp bfu" style="margin-top:16px;">+ Add Reward</button>
+
+</div></div>
+
 <!-- ═══ SETTINGS ════════════════════════════════════════════════════════ -->
 <div class="page" id="page-settings"><div class="pi">
 
@@ -510,7 +531,7 @@ select.inp{appearance:none;}
         <button class="btn btr" onclick="clearData()">Clear all</button>
       </div>
     </div>
-    <div style="text-align:center;padding:20px 0;font-size:.7rem;color:var(--tx3);">Ameet 2026 · v39.0</div>
+    <div style="text-align:center;padding:20px 0;font-size:.7rem;color:var(--tx3);">Ameet 2026 · <span id="app-version"></span></div>
   </div>
 
 </div></div>
@@ -562,7 +583,7 @@ select.inp{appearance:none;}
   <button class="nb"    id="nb-plan"     onclick="goTab('plan',this)"><div class="ni">&#9989;</div><div class="nl">Tasks</div></button>
   <button class="nb"    id="nb-progress" onclick="goTab('progress',this)"><div class="ni">&#128200;</div><div class="nl">Tracker</div></button>
   <button class="nb"    id="nb-goals"    onclick="goTab('goals',this)"><div class="ni">&#127919;</div><div class="nl">Goals</div></button>
-  <button class="nb"    id="nb-journal"  onclick="goTab('journal',this)"><div class="ni">&#128221;</div><div class="nl">Journal</div></button>
+  <button class="nb"    id="nb-rewards"  onclick="goTab('rewards',this)"><div class="ni">&#127873;</div><div class="nl">Rewards</div></button>
   <button class="nb"    id="nb-settings" onclick="goTab('settings',this)"><div class="ni">&#9881;&#65039;</div><div class="nl">Settings</div></button>
 </nav>
 
@@ -615,6 +636,9 @@ def('eodQuestions',[]);
 def('reflectionJournal',{}); // {date: [{qid, question, answer}]}
 def('dailyTaskOrder',[]); // [taskId, taskId, ...] — persistent task order in daily view
 def('plannedHabits',{}); // {date: {habitId: 'yes'|'nottoday'}} — planning decisions for non-daily habits
+def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'unlocked'|'claimed',progress:{},unlockedAt,claimedAt,createdAt}]
+
+const APP_VERSION = 'v40';
 
 function save(){ localStorage.setItem('a26v38', JSON.stringify(S)); }
 function today(){
@@ -731,7 +755,7 @@ function goTab(id, el){
   if(id==='plan')     buildWeeklyView();
   if(id==='progress') buildTracker();
   if(id==='goals')    buildGoalsPage();
-  if(id==='journal')  buildJournalPage();
+  if(id==='rewards')  buildRewardsPage();
   if(id==='settings') buildWorkspace();
 }
 
@@ -3058,6 +3082,462 @@ function saveProjectEdit(projId){
   save(); closeModal('modal-main'); buildGoalsPage(); toast('Project updated ✓');
 }
 
+// ── REWARDS ───────────────────────────────────────────────────────────────
+const REWARD_CONDITIONS = {
+  commitment_streak: { label: 'Commitment streak', unit: 'days', icon: '🎯' },
+  habit_streak: { label: 'Habit streak', unit: 'days', icon: '🔥', needsTarget: true },
+  goal_complete: { label: 'Complete goal', unit: '', icon: '🏆', needsTarget: true },
+  project_complete: { label: 'Complete projects', unit: 'projects', icon: '📁' },
+  habit_count: { label: 'Habit check-ins', unit: 'times', icon: '✅', needsTarget: true }
+};
+
+function buildRewardsPage(){
+  updateRewardsKPIs();
+  checkRewardProgress();
+  buildRewardsList();
+  buildRewardsHistory();
+}
+
+function updateRewardsKPIs(){
+  const rewards = S.rewards || [];
+  const active = rewards.filter(r => r.status === 'active').length;
+  const unlocked = rewards.filter(r => r.status === 'unlocked').length;
+  const claimed = rewards.filter(r => r.status === 'claimed').length;
+  
+  const elActive = document.getElementById('rewards-active');
+  const elUnlocked = document.getElementById('rewards-unlocked');
+  const elClaimed = document.getElementById('rewards-claimed');
+  
+  if(elActive) elActive.textContent = active;
+  if(elUnlocked) elUnlocked.textContent = unlocked;
+  if(elClaimed) elClaimed.textContent = claimed;
+}
+
+function getRewardProgress(reward){
+  // Calculate progress for each condition
+  const results = reward.conditions.map(cond => {
+    let current = 0;
+    let target = cond.value;
+    
+    switch(cond.type){
+      case 'commitment_streak':
+        current = getCommitmentStreak();
+        break;
+      case 'habit_streak':
+        current = getHabitStreak(cond.targetId);
+        break;
+      case 'goal_complete':
+        const goal = S.goals.find(g => g.id === cond.targetId);
+        const projs = S.projects.filter(p => p.goalId === cond.targetId && !p.archived);
+        const doneProjs = projs.filter(p => p.status === 'complete').length;
+        current = (projs.length > 0 && doneProjs === projs.length) ? 1 : 0;
+        target = 1;
+        break;
+      case 'project_complete':
+        current = S.projects.filter(p => p.status === 'complete' && !p.archived).length;
+        break;
+      case 'habit_count':
+        current = getHabitTotalCount(cond.targetId);
+        break;
+    }
+    
+    return { type: cond.type, current, target, pct: Math.min(100, Math.round(current / target * 100)) };
+  });
+  
+  // Overall progress is minimum of all conditions (all must be met)
+  const overallPct = results.length ? Math.min(...results.map(r => r.pct)) : 0;
+  const isComplete = results.every(r => r.current >= r.target);
+  
+  return { conditions: results, overallPct, isComplete };
+}
+
+function getCommitmentStreak(){
+  let streak = 0;
+  const td = today();
+  
+  for(let i = 0; i < 365; i++){
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    
+    if(dateStr === td) continue; // Skip today (not yet evaluated)
+    
+    const commitment = S.commitments?.[dateStr];
+    if(!commitment || !commitment.committed) break;
+    
+    // Check if met (100% completion)
+    const habits = S.habits.filter(h => !h.archived && !isHabitFromFutureGoal(h));
+    const dayData = getDayCompletionData(dateStr, habits);
+    if(dayData.pct !== 100) break;
+    
+    streak++;
+  }
+  
+  return streak;
+}
+
+function getHabitStreak(habitId){
+  let streak = 0;
+  const td = today();
+  
+  for(let i = 0; i < 365; i++){
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    
+    if(dateStr === td) continue; // Skip today
+    
+    const state = getHabitState(dateStr, habitId);
+    if(state !== 'done') break;
+    
+    streak++;
+  }
+  
+  return streak;
+}
+
+function getHabitTotalCount(habitId){
+  let count = 0;
+  const log = S.habitLog || {};
+  
+  Object.keys(log).forEach(date => {
+    if(log[date][habitId] === 'done') count++;
+  });
+  
+  return count;
+}
+
+function checkRewardProgress(){
+  const rewards = S.rewards || [];
+  let changed = false;
+  
+  rewards.forEach(r => {
+    if(r.status !== 'active') return;
+    
+    const progress = getRewardProgress(r);
+    
+    // Check if close to completion (80%+ on all conditions)
+    const isClose = progress.overallPct >= 80 && progress.overallPct < 100;
+    
+    // Check if unlocked
+    if(progress.isComplete){
+      r.status = 'unlocked';
+      r.unlockedAt = today();
+      changed = true;
+      showRewardUnlockedPopup(r);
+    } else if(isClose && !sessionStorage.getItem('rewardClose-'+r.id)){
+      sessionStorage.setItem('rewardClose-'+r.id, 'true');
+      showRewardClosePopup(r, progress);
+    }
+  });
+  
+  if(changed) save();
+}
+
+function showRewardClosePopup(reward, progress){
+  const remaining = progress.conditions.map(c => {
+    const diff = c.target - c.current;
+    if(diff <= 0) return null;
+    const cond = REWARD_CONDITIONS[c.type];
+    return `${diff} ${cond.unit}`;
+  }).filter(Boolean).join(', ');
+  
+  document.getElementById('modal-title').textContent = '🎁 Almost There!';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="text-align:center;padding:10px 0;">
+      <div style="font-size:2.5rem;margin-bottom:12px;">🎯</div>
+      <div style="font-size:.95rem;font-weight:600;color:var(--tx);margin-bottom:8px;">
+        You're close to earning: ${reward.name}
+      </div>
+      <div style="font-size:.78rem;color:var(--tx2);margin-bottom:16px;">
+        Just ${remaining} to go!
+      </div>
+      <div class="pb" style="height:8px;margin-bottom:16px;"><div class="pf" style="width:${progress.overallPct}%;background:var(--a);"></div></div>
+      <button onclick="closeModal('modal-main')" class="btn btp bfu">Keep Going! 💪</button>
+    </div>`;
+  openModal('modal-main');
+}
+
+function showRewardUnlockedPopup(reward){
+  document.getElementById('modal-title').textContent = '🎉 Reward Unlocked!';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="text-align:center;padding:10px 0;">
+      <div style="font-size:3rem;margin-bottom:12px;">🏆</div>
+      <div style="font-size:1.1rem;font-weight:700;color:var(--green);margin-bottom:8px;">
+        ${reward.name}
+      </div>
+      <div style="font-size:.78rem;color:var(--tx2);margin-bottom:20px;">
+        You've earned this reward! Claim it whenever you're ready.
+      </div>
+      <button onclick="claimReward('${reward.id}');closeModal('modal-main')" class="btn btg bfu" style="margin-bottom:8px;">Claim Now 🎁</button>
+      <button onclick="closeModal('modal-main')" class="btn btgh bfu">Claim Later</button>
+    </div>`;
+  openModal('modal-main');
+}
+
+function buildRewardsList(){
+  const el = document.getElementById('rewards-list'); if(!el) return;
+  const rewards = (S.rewards || []).filter(r => r.status !== 'claimed');
+  
+  if(!rewards.length){
+    el.innerHTML = '<div style="text-align:center;padding:30px 0;font-size:.78rem;color:var(--tx3);">No rewards yet. Add one to get started!</div>';
+    return;
+  }
+  
+  // Calculate progress and sort by closest to completion
+  const withProgress = rewards.map(r => ({
+    ...r,
+    progress: getRewardProgress(r)
+  }));
+  
+  // Sort: unlocked first, then by progress descending
+  withProgress.sort((a, b) => {
+    if(a.status === 'unlocked' && b.status !== 'unlocked') return -1;
+    if(b.status === 'unlocked' && a.status !== 'unlocked') return 1;
+    return b.progress.overallPct - a.progress.overallPct;
+  });
+  
+  el.innerHTML = withProgress.map(r => {
+    const isUnlocked = r.status === 'unlocked';
+    const borderColor = isUnlocked ? 'var(--green)' : 'var(--bdr)';
+    const bgColor = isUnlocked ? 'rgba(34,197,94,.08)' : 'var(--sur)';
+    
+    let conditionsHtml = r.conditions.map(cond => {
+      const condInfo = REWARD_CONDITIONS[cond.type];
+      const prog = r.progress.conditions.find(c => c.type === cond.type);
+      let targetLabel = '';
+      
+      if(cond.type === 'habit_streak' || cond.type === 'habit_count'){
+        const habit = S.habits.find(h => h.id === cond.targetId);
+        targetLabel = habit ? ` (${habit.name})` : '';
+      } else if(cond.type === 'goal_complete'){
+        const goal = S.goals.find(g => g.id === cond.targetId);
+        targetLabel = goal ? ` (${goal.name})` : '';
+      }
+      
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:.8rem;">${condInfo.icon}</span>
+        <div style="flex:1;">
+          <div style="font-size:.68rem;color:var(--tx2);">${condInfo.label}${targetLabel}</div>
+          <div class="pb" style="height:4px;margin-top:2px;"><div class="pf" style="width:${prog.pct}%;background:${prog.pct>=100?'var(--green)':'var(--a)'};"></div></div>
+        </div>
+        <span style="font-size:.62rem;font-weight:600;color:${prog.pct>=100?'var(--green)':'var(--tx3)'};">${prog.current}/${prog.target}</span>
+      </div>`;
+    }).join('');
+    
+    return `<div style="background:${bgColor};border:2px solid ${borderColor};border-radius:var(--r);padding:14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:1.3rem;">${isUnlocked ? '🏆' : '🎁'}</span>
+          <div>
+            <div style="font-size:.88rem;font-weight:700;color:${isUnlocked?'var(--green)':'var(--tx)'};">${r.name}</div>
+            ${isUnlocked ? '<div style="font-size:.62rem;color:var(--green);font-weight:600;">UNLOCKED!</div>' : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          ${isUnlocked ? `<button onclick="claimReward('${r.id}')" class="btn btsm btg">Claim</button>` : ''}
+          <button onclick="editReward('${r.id}')" class="btn btsm btgh">Edit</button>
+          <button onclick="deleteReward('${r.id}')" class="btn btsm btr">✕</button>
+        </div>
+      </div>
+      ${conditionsHtml}
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--bdr);">
+        <div style="flex:1;font-size:.65rem;color:var(--tx3);">Overall progress</div>
+        <div class="pb" style="width:80px;height:6px;"><div class="pf" style="width:${r.progress.overallPct}%;background:${r.progress.overallPct>=100?'var(--green)':'var(--a)'};"></div></div>
+        <span style="font-size:.7rem;font-weight:700;color:${r.progress.overallPct>=100?'var(--green)':'var(--a)'};">${r.progress.overallPct}%</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function buildRewardsHistory(){
+  const el = document.getElementById('rewards-history'); if(!el) return;
+  const claimed = (S.rewards || []).filter(r => r.status === 'claimed');
+  
+  if(!claimed.length){
+    el.innerHTML = '';
+    return;
+  }
+  
+  // Sort by claimed date descending
+  claimed.sort((a, b) => (b.claimedAt || '').localeCompare(a.claimedAt || ''));
+  
+  el.innerHTML = `
+    <div style="margin-top:20px;">
+      <div class="sl" style="margin-bottom:10px;">📜 Claimed Rewards</div>
+      ${claimed.map(r => {
+        const claimedDate = r.claimedAt ? new Date(r.claimedAt+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:6px;opacity:.7;">
+          <span style="font-size:1rem;">🏆</span>
+          <div style="flex:1;">
+            <div style="font-size:.78rem;font-weight:600;color:var(--tx2);">${r.name}</div>
+            <div style="font-size:.6rem;color:var(--tx3);">Claimed ${claimedDate}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function claimReward(rewardId){
+  const r = S.rewards.find(r => r.id === rewardId); if(!r) return;
+  r.status = 'claimed';
+  r.claimedAt = today();
+  save();
+  toast('Reward claimed! 🎉');
+  buildRewardsPage();
+}
+
+function deleteReward(rewardId){
+  if(!confirm('Delete this reward?')) return;
+  S.rewards = S.rewards.filter(r => r.id !== rewardId);
+  save();
+  toast('Reward deleted');
+  buildRewardsPage();
+}
+
+function openAddReward(){
+  const habits = S.habits.filter(h => !h.archived);
+  const goals = S.goals.filter(g => !g.archived && !g.future);
+  
+  document.getElementById('modal-title').textContent = 'Add Reward';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="igrp"><label class="ilbl">Reward name <span style="color:var(--red);">*</span></label>
+      <input class="inp" id="rw-name" placeholder="e.g., Eat KFC, Buy a book"/>
+    </div>
+    
+    <div class="igrp"><label class="ilbl">Condition type <span style="color:var(--red);">*</span></label>
+      <select class="inp" id="rw-type" style="appearance:none;" onchange="updateRewardConditionUI()">
+        <option value="">— Select condition —</option>
+        ${Object.entries(REWARD_CONDITIONS).map(([k,v]) => `<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
+      </select>
+    </div>
+    
+    <div id="rw-target-wrap" style="display:none;">
+      <div class="igrp"><label class="ilbl" id="rw-target-label">Target</label>
+        <select class="inp" id="rw-target" style="appearance:none;"></select>
+      </div>
+    </div>
+    
+    <div id="rw-value-wrap" style="display:none;">
+      <div class="igrp"><label class="ilbl" id="rw-value-label">Value</label>
+        <input class="inp" type="number" id="rw-value" min="1" value="7"/>
+      </div>
+    </div>
+    
+    <button class="btn btp bfu" onclick="saveNewReward()">Add Reward</button>`;
+  openModal('modal-main');
+}
+
+function updateRewardConditionUI(){
+  const type = document.getElementById('rw-type')?.value;
+  const targetWrap = document.getElementById('rw-target-wrap');
+  const valueWrap = document.getElementById('rw-value-wrap');
+  const targetSel = document.getElementById('rw-target');
+  const valueLabel = document.getElementById('rw-value-label');
+  
+  if(!type){
+    if(targetWrap) targetWrap.style.display = 'none';
+    if(valueWrap) valueWrap.style.display = 'none';
+    return;
+  }
+  
+  const cond = REWARD_CONDITIONS[type];
+  
+  // Show target selector for habit/goal specific conditions
+  if(cond.needsTarget){
+    targetWrap.style.display = 'block';
+    let options = '<option value="">— Select —</option>';
+    
+    if(type === 'habit_streak' || type === 'habit_count'){
+      const habits = S.habits.filter(h => !h.archived);
+      options += habits.map(h => `<option value="${h.id}">${h.name}</option>`).join('');
+      document.getElementById('rw-target-label').textContent = 'Select habit';
+    } else if(type === 'goal_complete'){
+      const goals = S.goals.filter(g => !g.archived && !g.future);
+      options += goals.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+      document.getElementById('rw-target-label').textContent = 'Select goal';
+    }
+    
+    targetSel.innerHTML = options;
+  } else {
+    targetWrap.style.display = 'none';
+  }
+  
+  // Show value input (except for goal_complete which is binary)
+  if(type !== 'goal_complete'){
+    valueWrap.style.display = 'block';
+    valueLabel.textContent = `Number of ${cond.unit}`;
+  } else {
+    valueWrap.style.display = 'none';
+  }
+}
+
+function saveNewReward(){
+  const name = document.getElementById('rw-name')?.value.trim();
+  if(!name){ toast('Enter a reward name'); return; }
+  
+  const type = document.getElementById('rw-type')?.value;
+  if(!type){ toast('Select a condition type'); return; }
+  
+  const cond = REWARD_CONDITIONS[type];
+  let targetId = null;
+  let value = 1;
+  
+  if(cond.needsTarget){
+    targetId = document.getElementById('rw-target')?.value;
+    if(!targetId){ toast('Select a target'); return; }
+  }
+  
+  if(type !== 'goal_complete'){
+    value = parseInt(document.getElementById('rw-value')?.value) || 1;
+    if(value < 1){ toast('Value must be at least 1'); return; }
+  }
+  
+  const reward = {
+    id: uid(),
+    name,
+    conditions: [{ type, value, targetId }],
+    status: 'active',
+    unlockedAt: null,
+    claimedAt: null,
+    createdAt: today()
+  };
+  
+  if(!S.rewards) S.rewards = [];
+  S.rewards.push(reward);
+  save();
+  closeModal('modal-main');
+  toast('Reward added ✓');
+  buildRewardsPage();
+}
+
+function editReward(rewardId){
+  const r = S.rewards.find(r => r.id === rewardId); if(!r) return;
+  const cond = r.conditions[0] || {};
+  
+  document.getElementById('modal-title').textContent = 'Edit Reward';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="igrp"><label class="ilbl">Reward name</label>
+      <input class="inp" id="rwe-name" value="${r.name}"/>
+    </div>
+    <div style="font-size:.72rem;color:var(--tx3);margin-bottom:12px;padding:8px;background:var(--bg);border-radius:var(--r2);">
+      Condition: ${REWARD_CONDITIONS[cond.type]?.icon} ${REWARD_CONDITIONS[cond.type]?.label} — ${cond.value} ${REWARD_CONDITIONS[cond.type]?.unit}
+    </div>
+    <button class="btn btp bfu" onclick="saveRewardEdit('${rewardId}')">Save</button>`;
+  openModal('modal-main');
+}
+
+function saveRewardEdit(rewardId){
+  const r = S.rewards.find(r => r.id === rewardId); if(!r) return;
+  const name = document.getElementById('rwe-name')?.value.trim();
+  if(!name){ toast('Name required'); return; }
+  r.name = name;
+  save();
+  closeModal('modal-main');
+  toast('Reward updated ✓');
+  buildRewardsPage();
+}
+
 // ── SETTINGS — WORKSPACE ─────────────────────────────────────────────────
 function buildWorkspace(){
   buildWsFreeHabits(); buildWsArchive();
@@ -4120,6 +4600,9 @@ function init(){
   checkDayReset(false);
   buildDailyView();
   loadPrefValues();
+  // Display version
+  const verEl = document.getElementById('app-version');
+  if(verEl) verEl.textContent = APP_VERSION;
   // Check every minute
   setInterval(()=>checkDayReset(false), 60 * 1000);
 }
