@@ -381,6 +381,9 @@ select.inp{appearance:none;}
   <!-- Plan your day section (for non-daily habits) -->
   <div id="plan-day-section"></div>
 
+  <!-- Today's habits label -->
+  <div class="sl" style="margin-top:14px;">✨ Today's habits</div>
+
   <!-- Habits list (grouped) -->
   <div id="daily-habits-list"></div>
 
@@ -1579,7 +1582,7 @@ function renderTaskRow(t){
       <div style="flex:1;min-width:0;" onclick="toggleTaskSwipe(this)">
         <div class="drag-label" style="font-size:.83rem;font-weight:500;${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;">
-          ${t.dueDate?`<span style="font-size:.62rem;font-weight:600;color:${dateColor};">${overdue?'⚠ Overdue':futureDue?'📅 '+formatDateShort(t.dueDate):dueToday?'Today':t.dueDate}</span>`:''}
+          ${t.dueDate?`<span style="font-size:.62rem;font-weight:600;color:${dateColor};">${overdue?'⚠️ Overdue':futureDue?'📅 '+formatDateShort(t.dueDate):dueToday?'📍 Today':t.dueDate}</span>`:''}
           ${t.done&&t.doneAt?`<span style="font-size:.6rem;color:var(--green);">✓ Done ${t.doneAt}</span>`:''}
         </div>
       </div>
