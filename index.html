@@ -162,9 +162,13 @@ input,textarea,select{font-family:inherit;}
 /* project / goal cards in settings */
 .entity-card{border:1px solid var(--bdr);border-radius:var(--r);margin-bottom:8px;overflow:hidden;}
 .entity-hdr{padding:11px 13px;display:flex;align-items:center;gap:9px;cursor:pointer;}
-.entity-name{font-size:.85rem;font-weight:700;flex:1;}
-.entity-sub{font-size:.63rem;color:var(--tx3);margin-top:1px;}
+.entity-name{font-size:.85rem;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.entity-sub{font-size:.63rem;color:var(--tx3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .entity-body{padding:6px 13px 13px;background:var(--sur);}
+.swipe-container{position:relative;overflow:hidden;}
+.swipe-content{position:relative;background:var(--bg);transition:transform .25s ease;z-index:2;}
+.swipe-actions{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--sur);z-index:1;}
+.swipe-container.swiped .swipe-content{transform:translateX(-220px);}
 .child-row{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;}
 .child-info{flex:1;}
 .child-name{font-size:.8rem;font-weight:600;}
@@ -2050,26 +2054,30 @@ function buildGoalsContent(){
     ensureOrder(projs);
     const done  = projs.filter(p=>p.status==='complete').length;
     const pct   = projs.length ? Math.round(done/projs.length*100) : 0;
-    html += `<div class="entity-card drag-item" data-id="${g.id}" style="margin-bottom:11px;">
-      <div class="entity-hdr" style="background:${col}12;border-bottom:1px solid ${col}22;">
-        <span class="drag-handle" onclick="event.stopPropagation()">&#9776;</span>
-        <div style="flex:1;cursor:pointer;" onclick="toggleSection('gp-${g.id}')">
-          <div style="display:flex;align-items:center;gap:7px;">
-            <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-            <div class="drag-label entity-name">${g.name}</div>
-          </div>
-          <div class="entity-sub" style="margin-left:16px;">${g.area} · ${done}/${projs.length} projects complete</div>
-          <div class="pb" style="margin-top:5px;height:4px;margin-left:16px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
-        </div>
-        <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
-          <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
-          <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
-          <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
-        </div>
+    const doneColor = done === projs.length && projs.length > 0 ? 'var(--green)' : done > 0 ? 'var(--teal)' : 'var(--tx3)';
+    html += `<div class="swipe-container drag-item" data-id="${g.id}" style="margin-bottom:11px;">
+      <div class="swipe-actions">
+        <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
+        <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
+        <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
       </div>
-      <div id="gp-${g.id}" style="display:none;padding:8px 0 4px;">
-        <div id="proj-drag-${g.id}">
-          ${projs.length ? projs.map(p=>renderGoalPageProjRow(p,g.id)).join('') : '<div style="font-size:.72rem;color:var(--tx3);padding:4px 12px 8px;">No projects yet.</div>'}
+      <div class="swipe-content entity-card" style="margin-bottom:0;">
+        <div class="entity-hdr" style="background:${col}12;border-bottom:1px solid ${col}22;">
+          <span class="drag-handle" onclick="event.stopPropagation()">&#9776;</span>
+          <div style="flex:1;min-width:0;cursor:pointer;" onclick="toggleSection('gp-${g.id}')">
+            <div style="display:flex;align-items:center;gap:7px;">
+              <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+              <div class="drag-label entity-name">${g.name}</div>
+            </div>
+            <div class="entity-sub" style="margin-left:16px;">${g.area} · <span style="color:${doneColor};font-weight:600;">${done}</span>/${projs.length} projects</div>
+            <div class="pb" style="margin-top:5px;height:4px;margin-left:16px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
+          </div>
+          <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
+        </div>
+        <div id="gp-${g.id}" style="display:none;padding:8px 0 4px;">
+          <div id="proj-drag-${g.id}">
+            ${projs.length ? projs.map(p=>renderGoalPageProjRow(p,g.id)).join('') : '<div style="font-size:.72rem;color:var(--tx3);padding:4px 12px 8px;">No projects yet.</div>'}
+          </div>
         </div>
       </div>
     </div>`;
@@ -2102,6 +2110,9 @@ function buildGoalsContent(){
   if(standalone.length){
     makeDraggable('#proj-drag-standalone', ()=>standalone, buildGoalsPage);
   }
+  
+  // Wire swipe gestures for goals
+  wireSwipeGestures();
 }
 
 function renderGoalPageProjRow(p, groupId){
@@ -3073,6 +3084,103 @@ function makeDraggable(containerSel, getArr, rebuild, getLabelFromEl){
     },{passive:false});
 
     handle.addEventListener('touchend', ()=>endDrag());
+  });
+}
+
+// ── SWIPE TO REVEAL ACTIONS ───────────────────────────────────────────────
+function toggleSwipe(el){
+  const container = el.closest('.swipe-container');
+  if(!container) return;
+  // Close any other open swipes
+  document.querySelectorAll('.swipe-container.swiped').forEach(c=>{
+    if(c !== container) c.classList.remove('swiped');
+  });
+  container.classList.toggle('swiped');
+}
+
+function closeSwipeAfterAction(el){
+  const container = el.closest('.swipe-container');
+  if(container) container.classList.remove('swiped');
+}
+
+function wireSwipeGestures(){
+  const containers = document.querySelectorAll('.swipe-container');
+  containers.forEach(container=>{
+    const content = container.querySelector('.swipe-content');
+    if(!content) return;
+    
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let isSwiping = false;
+    let isHorizontalSwipe = null;
+    const isAlreadyOpen = () => container.classList.contains('swiped');
+    
+    content.addEventListener('touchstart', e=>{
+      // Don't interfere with drag handle
+      if(e.target.closest('.drag-handle')) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      currentX = startX;
+      isSwiping = true;
+      isHorizontalSwipe = null;
+    }, {passive:true});
+    
+    content.addEventListener('touchmove', e=>{
+      if(!isSwiping) return;
+      currentX = e.touches[0].clientX;
+      const currentY = e.touches[0].clientY;
+      const diffX = startX - currentX;
+      const diffY = Math.abs(startY - currentY);
+      
+      // Determine if this is a horizontal or vertical swipe
+      if(isHorizontalSwipe === null && (Math.abs(diffX) > 10 || diffY > 10)){
+        isHorizontalSwipe = Math.abs(diffX) > diffY;
+      }
+      
+      // Only handle horizontal swipes
+      if(isHorizontalSwipe){
+        e.preventDefault();
+        if(isAlreadyOpen()){
+          // If already open, allow swiping right to close
+          if(diffX < -15){
+            const translateX = Math.max(0, 220 + diffX);
+            content.style.transform = `translateX(-${translateX}px)`;
+            content.style.transition = 'none';
+          }
+        } else {
+          // If closed, allow swiping left to open
+          if(diffX > 15){
+            const translateX = Math.min(220, Math.max(0, diffX));
+            content.style.transform = `translateX(-${translateX}px)`;
+            content.style.transition = 'none';
+          }
+        }
+      }
+    }, {passive:false});
+    
+    content.addEventListener('touchend', ()=>{
+      if(!isSwiping) return;
+      isSwiping = false;
+      content.style.transition = 'transform .25s ease';
+      const diff = startX - currentX;
+      
+      if(isAlreadyOpen()){
+        // If open, require swipe RIGHT (negative diff) > 80px to close
+        if(diff < -80){
+          container.classList.remove('swiped');
+        }
+        // Otherwise stay open
+        content.style.transform = '';
+      } else {
+        // If closed, require swipe LEFT > 80px to open
+        if(isHorizontalSwipe && diff > 80){
+          container.classList.add('swiped');
+        }
+        content.style.transform = '';
+      }
+      isHorizontalSwipe = null;
+    });
   });
 }
 
