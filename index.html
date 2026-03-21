@@ -1230,7 +1230,9 @@ function updateRing(){
     groups[k].total++;
     if(getHabitState(td,h.id)==='done') groups[k].done++;
   });
-  bars.innerHTML=Object.values(groups).map(g=>{
+  
+  // Build habit group bars
+  let barsHtml = Object.values(groups).map(g=>{
     const pp=g.total?Math.round(g.done/g.total*100):0;
     return `<div style="margin-bottom:3px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:1px;">
@@ -1240,6 +1242,20 @@ function updateRing(){
       <div class="pb"><div class="pf" style="width:${pp}%;background:${pp>=90?'var(--green)':pp>=70?'var(--a2)':'var(--a)'}"></div></div>
     </div>`;
   }).join('');
+  
+  // Add task progress bar (single bar for all tasks)
+  if(tasksTotal > 0){
+    const taskPct = Math.round(tasksDone/tasksTotal*100);
+    barsHtml += `<div style="margin-bottom:3px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bdr);">
+      <div style="display:flex;justify-content:space-between;margin-bottom:1px;">
+        <span style="font-size:.58rem;color:var(--tx3);">📋 Tasks</span>
+        <span style="font-size:.58rem;color:var(--teal);font-weight:600;">${tasksDone}/${tasksTotal}</span>
+      </div>
+      <div class="pb"><div class="pf" style="width:${taskPct}%;background:${taskPct>=90?'var(--green)':taskPct>=70?'var(--teal)':'var(--blue)'}"></div></div>
+    </div>`;
+  }
+  
+  bars.innerHTML = barsHtml;
 }
 
 function updateHeroStats(){
