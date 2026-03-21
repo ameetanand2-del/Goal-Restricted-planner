@@ -64,6 +64,7 @@ input,textarea,select{font-family:inherit;}
 
 /* Floating Action Button */
 #fab-container{position:fixed;bottom:calc(var(--navh) + var(--sb) + 12px);right:16px;z-index:25;}
+#goals-fab-container{position:fixed;bottom:calc(var(--navh) + var(--sb) + 12px);right:16px;z-index:25;}
 .fab{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--a),#d4541f);color:#fff;font-size:1.6rem;font-weight:300;border:none;box-shadow:0 4px 16px rgba(232,98,42,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,box-shadow .15s;}
 .fab:active{transform:scale(.95);box-shadow:0 2px 8px rgba(232,98,42,.3);}
 .fab.open{transform:rotate(45deg);}
@@ -352,6 +353,13 @@ select.inp{appearance:none;}
 <!-- ═══ DAILY ════════════════════════════════════════════════════════════ -->
 <div class="page on" id="page-home"><div class="pi">
 
+  <!-- Daily Commitment Section (shows if not committed today) -->
+  <div id="commit-section"></div>
+
+  <!-- Locked overlay when not committed -->
+  <div id="daily-locked-overlay" style="display:none;position:relative;">
+    <div id="daily-content-locked" style="opacity:0.4;pointer-events:none;">
+
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <div class="sg3" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
@@ -407,6 +415,9 @@ select.inp{appearance:none;}
   <!-- Done today section -->
   <div id="done-today-section"></div>
 
+    </div><!-- end daily-content-locked -->
+  </div><!-- end daily-locked-overlay -->
+
 </div></div>
 
 <!-- ═══ TASKS ════════════════════════════════════════════════════════════ -->
@@ -456,16 +467,8 @@ select.inp{appearance:none;}
   <!-- Workspace — quick add only -->
   <div class="subpage on" id="ssub-workspace">
 
-    <!-- Quick add row -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px;">
-      <button class="btn btp" onclick="openQuickAdd('goal')" style="font-size:.75rem;">+ Goal</button>
-      <button class="btn btb" onclick="openQuickAdd('project')" style="font-size:.75rem;">+ Project</button>
-      <button class="btn btg" onclick="openQuickAdd('habit')" style="font-size:.75rem;">+ Habit</button>
-      <button class="btn btgh" onclick="openQuickAdd('task')" style="font-size:.75rem;">+ Task</button>
-    </div>
-
     <div style="font-size:.72rem;color:var(--tx3);text-align:center;padding:4px 0 14px;line-height:1.6;">
-      Manage goals &amp; projects in the <strong style="color:var(--tx2);">Goals</strong> tab.<br/>
+      Add goals, projects &amp; habits using the <strong style="color:var(--a);">+</strong> button in the <strong style="color:var(--tx2);">Goals</strong> tab.<br/>
       Manage habits in <strong style="color:var(--tx2);">Settings → Habits</strong> below.
     </div>
 
@@ -532,7 +535,7 @@ select.inp{appearance:none;}
 
 </div><!-- end scroll -->
 
-<!-- Floating Action Button with Menu -->
+<!-- Floating Action Button with Menu (Tasks) -->
 <div id="fab-container" style="display:none;">
   <div id="fab-menu" style="display:none;position:absolute;bottom:60px;right:0;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:140px;">
     <div class="fab-item" onclick="setTaskFilter('all');closeFabMenu()">All</div>
@@ -542,6 +545,16 @@ select.inp{appearance:none;}
     <div class="fab-item fab-item-add" onclick="openTaskAddModal();closeFabMenu()">+ Add Task</div>
   </div>
   <button class="fab" onclick="toggleFabMenu()">+</button>
+</div>
+
+<!-- Floating Action Button with Menu (Goals) -->
+<div id="goals-fab-container" style="display:none;">
+  <div id="goals-fab-menu" style="display:none;position:absolute;bottom:60px;right:0;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:140px;">
+    <div class="fab-item" onclick="openQuickAdd('habit');closeGoalsFabMenu()">+ Habit</div>
+    <div class="fab-item" onclick="openQuickAdd('project');closeGoalsFabMenu()">+ Project</div>
+    <div class="fab-item fab-item-add" onclick="openQuickAdd('goal');closeGoalsFabMenu()">+ Goal</div>
+  </div>
+  <button class="fab" onclick="toggleGoalsFabMenu()">+</button>
 </div>
 
 <nav class="nav">
@@ -634,9 +647,44 @@ function groupLabel(h){
 // ── WHICH HABITS ARE ACTIVE TODAY ────────────────────────────────────────
 // In focus mode (active cycle): only habits in the cycle
 // In flexible mode (no cycle): all non-archived habits
+function isGoalFuture(goalId){
+  if(!goalId) return false;
+  const g = S.goals.find(g=>g.id===goalId);
+  return g ? g.future === true : false;
+}
+
+function isHabitFromFutureGoal(h){
+  // Check if habit's direct goal is future
+  if(h.goalId && isGoalFuture(h.goalId)) return true;
+  // Check if habit's project's goal is future
+  if(h.projId){
+    const p = S.projects.find(p=>p.id===h.projId);
+    if(p && p.goalId && isGoalFuture(p.goalId)) return true;
+  }
+  return false;
+}
+
+function isTaskFromFutureGoal(t){
+  // Check if task's direct goal is future
+  if(t.goalId && isGoalFuture(t.goalId)) return true;
+  // Check if task's project's goal is future
+  if(t.projId){
+    const p = S.projects.find(p=>p.id===t.projId);
+    if(p && p.goalId && isGoalFuture(p.goalId)) return true;
+  }
+  return false;
+}
+
+function isProjectFromFutureGoal(p){
+  if(!p.goalId) return false;
+  return isGoalFuture(p.goalId);
+}
+
 function getActiveHabits(){
   const c = getActiveCycle();
-  const all = S.habits.filter(h=>!h.archived);
+  let all = S.habits.filter(h=>!h.archived);
+  // Exclude habits from future goals
+  all = all.filter(h => !isHabitFromFutureGoal(h));
   if(c){ return all.filter(h=> (c.habitIds||[]).includes(h.id) || ( h.projId && (c.projIds||[]).includes(h.projId) ) ); }
   return all;
 }
@@ -667,9 +715,11 @@ function goTab(id, el){
   // Scroll to top on every tab switch
   const scroller = document.querySelector('.scroll');
   if(scroller) scroller.scrollTop = 0;
-  // Show/hide FAB based on tab
-  const fab = document.getElementById('fab-container');
-  if(fab) fab.style.display = (id === 'plan') ? 'block' : 'none';
+  // Show/hide FABs based on tab
+  const tasksFab = document.getElementById('fab-container');
+  const goalsFab = document.getElementById('goals-fab-container');
+  if(tasksFab) tasksFab.style.display = (id === 'plan') ? 'block' : 'none';
+  if(goalsFab) goalsFab.style.display = (id === 'goals') ? 'block' : 'none';
   
   if(id==='home')     buildDailyView();
   if(id==='plan')     buildWeeklyView();
@@ -712,6 +762,12 @@ function buildDailyView(){
   document.getElementById('h-date').textContent =
     now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
 
+  // Check for overcommitment warning
+  checkOvercommitmentWarning();
+  
+  // Build commitment section (or unlock content if committed)
+  buildCommitSection();
+  
   updateTopbarRight();
   updateWksLeftTile();
   buildPlanDaySection();
@@ -722,6 +778,220 @@ function buildDailyView(){
   updateRing();
   updateHeroStats();
   updateCompleteDayBtn();
+}
+
+// ── DAILY COMMITMENT SYSTEM ───────────────────────────────────────────────
+function isCommittedToday(){
+  const td = today();
+  return S.commitments && S.commitments[td] && S.commitments[td].committed;
+}
+
+function getCommitmentData(date){
+  return S.commitments?.[date] || null;
+}
+
+// Check if editing is locked (committed + after 12 PM)
+function isEditingLocked(){
+  if(!isCommittedToday()) return false;
+  const now = new Date();
+  const hour = now.getHours();
+  return hour >= 12; // Locked after 12 PM (noon)
+}
+
+// Check if a specific task is committed today
+function isTaskCommittedToday(taskId){
+  const td = today();
+  const commitment = S.commitments?.[td];
+  if(!commitment || !commitment.committed) return false;
+  return commitment.taskIds?.includes(taskId) || false;
+}
+
+// Check if a specific habit is committed today (all habits shown today are committed)
+function isHabitCommittedToday(habitId){
+  if(!isCommittedToday()) return false;
+  const h = S.habits.find(h => h.id === habitId);
+  if(!h) return false;
+  return shouldShowHabitToday(h);
+}
+
+function buildCommitSection(){
+  const el = document.getElementById('commit-section'); if(!el) return;
+  const overlay = document.getElementById('daily-locked-overlay');
+  const td = today();
+  
+  // If already committed today, hide commit section and unlock content
+  if(isCommittedToday()){
+    el.style.display = 'none';
+    if(overlay){
+      overlay.style.display = 'block';
+      const content = document.getElementById('daily-content-locked');
+      if(content){
+        content.style.opacity = '1';
+        content.style.pointerEvents = 'auto';
+      }
+    }
+    return;
+  }
+  
+  // Show commit section, lock content
+  el.style.display = 'block';
+  if(overlay){
+    overlay.style.display = 'block';
+    const content = document.getElementById('daily-content-locked');
+    if(content){
+      content.style.opacity = '0.4';
+      content.style.pointerEvents = 'none';
+    }
+  }
+  
+  // Get tasks due today or overdue
+  const tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t));
+  
+  // Get habits for today
+  const allHabits = getActiveHabits();
+  const habits = allHabits.filter(h => shouldShowHabitToday(h));
+  
+  let html = `<div style="background:linear-gradient(135deg,rgba(232,98,42,.08),rgba(232,98,42,.02));border:2px solid var(--a);border-radius:var(--r);padding:16px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span style="font-size:1.4rem;">🎯</span>
+      <div>
+        <div style="font-size:.9rem;font-weight:700;color:var(--a);">Commit to Today</div>
+        <div style="font-size:.68rem;color:var(--tx3);">Select what you'll accomplish before starting</div>
+      </div>
+    </div>`;
+  
+  // Tasks section
+  if(tasks.length){
+    html += `<div style="margin-bottom:14px;">
+      <div style="font-size:.72rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">📋 Tasks to commit to:</div>`;
+    tasks.forEach(t => {
+      const proj = t.projId ? S.projects.find(p=>p.id===t.projId) : null;
+      const projName = proj ? proj.name : '';
+      html += `<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:pointer;">
+        <input type="checkbox" id="commit-task-${t.id}" checked style="margin-top:3px;accent-color:var(--a);">
+        <div style="flex:1;">
+          <div style="font-size:.8rem;font-weight:500;">${t.name}</div>
+          ${projName ? `<div style="font-size:.62rem;color:var(--tx3);">${projName}</div>` : ''}
+        </div>
+      </label>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<div style="font-size:.75rem;color:var(--tx3);margin-bottom:14px;">No tasks due today.</div>`;
+  }
+  
+  // Habits section (display only, not selectable)
+  if(habits.length){
+    html += `<div style="margin-bottom:14px;">
+      <div style="font-size:.72rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">✨ Today's habits (${habits.length}):</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;">`;
+    habits.forEach(h => {
+      html += `<span style="font-size:.7rem;padding:4px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:99px;color:var(--tx2);">${h.name}</span>`;
+    });
+    html += `</div></div>`;
+  }
+  
+  // Commit button
+  html += `<button onclick="commitToday()" class="btn btp bfu" style="font-size:.85rem;padding:12px;">
+    ✓ Commit & Start Day
+  </button>
+  </div>`;
+  
+  el.innerHTML = html;
+}
+
+function commitToday(){
+  const td = today();
+  
+  // Gather committed task IDs
+  const taskIds = [];
+  S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t)).forEach(t => {
+    const cb = document.getElementById('commit-task-'+t.id);
+    if(cb && cb.checked) taskIds.push(t.id);
+  });
+  
+  // Initialize commitments object if needed
+  if(!S.commitments) S.commitments = {};
+  
+  // Store commitment
+  S.commitments[td] = {
+    committed: true,
+    taskIds: taskIds,
+    committedAt: new Date().toTimeString().slice(0,5),
+    met: null // Will be calculated at end of day or next day
+  };
+  
+  save();
+  toast('Committed! Let\'s do this 💪');
+  buildDailyView();
+}
+
+function checkOvercommitmentWarning(){
+  const td = today();
+  const habits = S.habits.filter(h=>!h.archived && !isHabitFromFutureGoal(h));
+  
+  // Check last 2 days (not including today)
+  const dates = [];
+  for(let i = 1; i <= 2; i++){
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(localDate(d));
+  }
+  
+  // Calculate if commitment was met for past days (based on 100% completion)
+  dates.forEach(date => {
+    const commitment = S.commitments?.[date];
+    if(commitment && commitment.committed && commitment.met === null){
+      // Met = 100% completion
+      const dayData = getDayCompletionData(date, habits);
+      commitment.met = dayData.pct === 100;
+      save();
+    }
+  });
+  
+  // Check if last 2 days both had unmet commitments
+  let consecutiveMissed = 0;
+  for(const date of dates){
+    const commitment = S.commitments?.[date];
+    if(commitment && commitment.committed && commitment.met === false){
+      consecutiveMissed++;
+    } else {
+      break; // Stop counting if we hit a met commitment or no commitment
+    }
+  }
+  
+  // Show warning if 2+ consecutive missed commitments
+  if(consecutiveMissed >= 2 && !sessionStorage.getItem('overcommitWarningShown-'+td)){
+    sessionStorage.setItem('overcommitWarningShown-'+td, 'true');
+    setTimeout(() => {
+      showOvercommitmentWarning(consecutiveMissed);
+    }, 500);
+  }
+}
+
+function showOvercommitmentWarning(days){
+  document.getElementById('modal-title').textContent = '⚠️ Review Your Commitments';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="text-align:center;padding:10px 0;">
+      <div style="font-size:2.5rem;margin-bottom:12px;">😓</div>
+      <div style="font-size:.9rem;font-weight:600;color:var(--tx);margin-bottom:8px;">
+        You've missed your commitment ${days} days in a row
+      </div>
+      <div style="font-size:.78rem;color:var(--tx2);line-height:1.6;margin-bottom:16px;">
+        It's okay! This might be a sign you're overcommitting.<br>
+        Consider reducing your daily commitments to something more achievable.
+      </div>
+      <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;margin-bottom:16px;text-align:left;">
+        <div style="font-size:.72rem;font-weight:700;color:var(--tx2);margin-bottom:6px;">💡 Tips:</div>
+        <ul style="font-size:.72rem;color:var(--tx3);margin:0;padding-left:18px;line-height:1.7;">
+          <li>Commit to fewer tasks each day</li>
+          <li>Focus on your top 3 priorities</li>
+          <li>Be realistic about your time</li>
+        </ul>
+      </div>
+      <button onclick="closeModal('modal-main')" class="btn btp bfu">Got it, I'll adjust</button>
+    </div>`;
+  openModal('modal-main');
 }
 
 // Get non-daily habits that need planning decisions today
@@ -938,8 +1208,8 @@ function toggleDailyTaskGrouping(){
 
 function buildDailyTasks(){
   const td = today();
-  // Show tasks due today or overdue and NOT done
-  let tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td);
+  // Show tasks due today or overdue and NOT done, excluding future goal tasks
+  let tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t));
   const el = document.getElementById('daily-tasks-wrap');
   const list = document.getElementById('daily-tasks-list');
   if(!tasks.length){ if(el) el.style.display='none'; return; }
@@ -1200,8 +1470,8 @@ function updateRing(){
   habits.forEach(h=>{ const s=getHabitState(td,h.id); if(s==='done') habitsDone++; else if(s==='skipped') habitsSkip++; });
   const habitsTotal=habits.length;
   
-  // Get today's tasks (due today or overdue)
-  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
+  // Get today's tasks (due today or overdue), excluding future goal tasks
+  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t));
   const tasksDone = todayTasks.filter(t=>t.done).length;
   const tasksTotal = todayTasks.length;
   
@@ -1371,6 +1641,11 @@ function completeDay(){
   S.completedDays.push(td);
   S.completedDayAt = new Date().toISOString();
 
+  // Auto-mark commitment as Met (100% completion)
+  if(S.commitments && S.commitments[td] && S.commitments[td].committed){
+    S.commitments[td].met = true;
+  }
+
   // Snapshot reflection answers into journal
   const qs = (S.eodQuestions||[]).filter(q=>q.enabled);
   const answers = S.habitLog?.[td]?.['__eod']||{};
@@ -1415,7 +1690,8 @@ function toggleTaskGrouping(){
 function buildTasksList(){
   const el = document.getElementById('tasks-list-content'); if(!el) return;
   const td = today();
-  let tasks = S.tasks.filter(t=>!t.archived);
+  // Filter out archived tasks and tasks from future goals
+  let tasks = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t));
   ensureOrder(tasks);
 
   if(taskFilter==='open')  tasks = tasks.filter(t=>!t.done);
@@ -1620,8 +1896,9 @@ function quickAddTask(){
 }
 
 function openNewTaskModal(prefill){
-  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
-  const goals = S.goals.filter(g=>!g.archived);
+  // Only show active goals and projects (not archived, not future)
+  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned'&&!isProjectFromFutureGoal(p));
+  const goals = S.goals.filter(g=>!g.archived&&!g.future);
   document.getElementById('modal-title').textContent = 'New task';
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="nt-name" placeholder="What needs to be done…" value="${prefill||''}"/></div>
@@ -1649,7 +1926,8 @@ function onTaskGoalChange(){
   const projSelect = document.getElementById('nt-proj');
   if(!projSelect) return;
   
-  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
+  // Only show active projects (not from future goals)
+  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned'&&!isProjectFromFutureGoal(p));
   
   // Filter projects by selected goal
   let filteredProjs = goalId ? projs.filter(p => p.goalId === goalId) : projs;
@@ -1679,7 +1957,7 @@ function openTaskAddModal(){ openNewTaskModal(''); }
 
 function toggleFabMenu(){
   const menu = document.getElementById('fab-menu');
-  const fab = document.querySelector('.fab');
+  const fab = document.querySelector('#fab-container .fab');
   if(!menu) return;
   const isOpen = menu.style.display === 'block';
   menu.style.display = isOpen ? 'none' : 'block';
@@ -1702,7 +1980,37 @@ function closeFabMenuOnOutside(e){
 
 function closeFabMenu(){
   const menu = document.getElementById('fab-menu');
-  const fab = document.querySelector('.fab');
+  const fab = document.querySelector('#fab-container .fab');
+  if(menu) menu.style.display = 'none';
+  if(fab) fab.classList.remove('open');
+}
+
+// Goals FAB functions
+function toggleGoalsFabMenu(){
+  const menu = document.getElementById('goals-fab-menu');
+  const fab = document.querySelector('#goals-fab-container .fab');
+  if(!menu) return;
+  const isOpen = menu.style.display === 'block';
+  menu.style.display = isOpen ? 'none' : 'block';
+  if(fab) fab.classList.toggle('open', !isOpen);
+  
+  if(!isOpen){
+    setTimeout(()=>{
+      document.addEventListener('click', closeGoalsFabMenuOnOutside, {once:true});
+    }, 10);
+  }
+}
+
+function closeGoalsFabMenuOnOutside(e){
+  const container = document.getElementById('goals-fab-container');
+  if(container && !container.contains(e.target)){
+    closeGoalsFabMenu();
+  }
+}
+
+function closeGoalsFabMenu(){
+  const menu = document.getElementById('goals-fab-menu');
+  const fab = document.querySelector('#goals-fab-container .fab');
   if(menu) menu.style.display = 'none';
   if(fab) fab.classList.remove('open');
 }
@@ -1722,6 +2030,13 @@ function saveNewTask(){
 
 function openTaskEdit(taskId){
   const t = S.tasks.find(t=>t.id===taskId); if(!t) return;
+  
+  // Check if editing is locked (committed + after 12 PM)
+  if(isEditingLocked() && isTaskCommittedToday(taskId)){
+    toast('Editing locked after 12 PM');
+    return;
+  }
+  
   const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
   const goals = S.goals.filter(g=>!g.archived);
   document.getElementById('modal-title').textContent = 'Edit task';
@@ -1759,6 +2074,13 @@ function saveTaskEdit(taskId){
 
 function archiveTask(taskId){
   const t = S.tasks.find(t=>t.id===taskId); if(!t) return;
+  
+  // Check if editing is locked (committed + after 12 PM) for committed tasks
+  if(isEditingLocked() && isTaskCommittedToday(taskId)){
+    toast('Cannot delete — locked after 12 PM');
+    return;
+  }
+  
   t.archived=true; save(); closeModal('modal-main'); buildTasksList(); buildDailyTasks(); toast('Task removed ✓');
 }
 
@@ -1814,7 +2136,8 @@ function habitGroups(habits){
 
 function buildTrackerHabits(){
   const el=document.getElementById('tracker-habits-content'); if(!el) return;
-  const habits=S.habits.filter(h=>!h.archived);
+  // Exclude archived habits and habits from future goals
+  const habits=S.habits.filter(h=>!h.archived && !isHabitFromFutureGoal(h));
   if(!habits.length){ el.innerHTML='<div style="text-align:center;padding:40px 0;font-size:.78rem;color:var(--tx3);">No habits yet.</div>'; return; }
   const td=today();
   const weekDays = getWeekDays(weeklyRingOffset);
@@ -1833,26 +2156,71 @@ function buildTrackerHabits(){
       <div style="font-size:.75rem;font-weight:600;color:var(--tx2);">${weekLabel}</div>
       <button class="btn btsm btgh" id="weekly-ring-next" onclick="setWeeklyRingOffset(weeklyRingOffset+1)" ${weeklyRingOffset>=0?'style="opacity:0.3;pointer-events:none;"':''}>&#8594;</button>
     </div>
-    <div id="weekly-rings-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+    <div id="weekly-rings-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:320px;margin:0 auto;">
       ${weekDays.map((day,i)=>{
         const isFuture = day > td;
         const dayData = getDayCompletionData(day, habits);
         const isSelected = selectedRingDay === day;
         const ringColor = isFuture ? 'var(--bdr)' : dayData.pct >= 80 ? 'var(--green)' : dayData.pct >= 50 ? 'var(--a2)' : 'var(--a)';
         const dayNum = new Date(day+'T12:00:00').getDate();
+        
         return `<div class="ring-day" data-day="${day}" data-future="${isFuture}"
-          style="display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-radius:var(--r2);cursor:${isFuture?'default':'pointer'};background:${isSelected?'rgba(232,98,42,.12)':'transparent'};border:2px solid ${isSelected?'var(--a)':'transparent'};transition:all .15s;">
-          <div style="font-size:.6rem;font-weight:600;color:${isFuture?'var(--tx3)':'var(--tx2)'};margin-bottom:4px;">${DAY_LABELS[i]}</div>
-          <div style="position:relative;width:38px;height:38px;">
-            <svg width="38" height="38" viewBox="0 0 38 38">
-              <circle cx="19" cy="19" r="15" fill="none" stroke="var(--bdr)" stroke-width="3"/>
-              <circle cx="19" cy="19" r="15" fill="none" stroke="${ringColor}" stroke-width="3" 
-                stroke-dasharray="94.2" stroke-dashoffset="${isFuture?94.2:94.2-(94.2*dayData.pct/100)}" 
-                transform="rotate(-90 19 19)" style="transition:stroke-dashoffset .3s;"/>
+          style="display:flex;flex-direction:column;align-items:center;padding:6px 2px;border-radius:var(--r2);cursor:${isFuture?'default':'pointer'};background:${isSelected?'rgba(232,98,42,.12)':'transparent'};border:2px solid ${isSelected?'var(--a)':'transparent'};transition:all .15s;">
+          <div style="font-size:.55rem;font-weight:600;color:${isFuture?'var(--tx3)':'var(--tx2)'};margin-bottom:3px;">${DAY_LABELS[i]}</div>
+          <div style="position:relative;width:34px;height:34px;">
+            <svg width="34" height="34" viewBox="0 0 34 34">
+              <circle cx="17" cy="17" r="13" fill="none" stroke="var(--bdr)" stroke-width="3"/>
+              <circle cx="17" cy="17" r="13" fill="none" stroke="${ringColor}" stroke-width="3" 
+                stroke-dasharray="81.68" stroke-dashoffset="${isFuture?81.68:81.68-(81.68*dayData.pct/100)}" 
+                transform="rotate(-90 17 17)" style="transition:stroke-dashoffset .3s;"/>
             </svg>
-            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:${isFuture?'var(--tx3)':ringColor};">${isFuture?'':dayData.pct+'%'}</div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.58rem;font-weight:700;color:${isFuture?'var(--tx3)':ringColor};">${isFuture?'':dayData.pct+'%'}</div>
           </div>
-          <div style="font-size:.58rem;color:var(--tx3);margin-top:3px;">${dayNum}</div>
+          <div style="font-size:.52rem;color:var(--tx3);margin-top:2px;">${dayNum}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    
+    <!-- Commitment Status Row - aligned with rings -->
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px;max-width:320px;margin-left:auto;margin-right:auto;">
+      ${weekDays.map((day,i)=>{
+        const isFuture = day > td;
+        const dayData = getDayCompletionData(day, habits);
+        const commitment = S.commitments?.[day];
+        const committed = commitment?.committed;
+        
+        let label = '';
+        let emoji = '';
+        let color = '';
+        
+        if(isFuture){
+          label = '';
+          emoji = '';
+          color = '';
+        } else if(!committed){
+          label = 'No';
+          emoji = '⚪';
+          color = 'var(--tx3)';
+        } else {
+          const met = dayData.pct === 100;
+          if(met){
+            label = 'Met';
+            emoji = '✅';
+            color = 'var(--green)';
+          } else if(day === td){
+            label = 'Pending';
+            emoji = '⏳';
+            color = 'var(--tx3)';
+          } else {
+            label = 'Missed';
+            emoji = '❌';
+            color = 'var(--red)';
+          }
+        }
+        
+        return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 2px;">
+          ${emoji ? `<div style="font-size:.7rem;">${emoji}</div>` : ''}
+          ${label ? `<div style="font-size:.5rem;color:${color};font-weight:600;margin-top:1px;">${label}</div>` : ''}
         </div>`;
       }).join('')}
     </div>
@@ -1931,9 +2299,9 @@ function getDayCompletionData(day, habits){
   });
   const totalHabits = habits.length;
   
-  // Get tasks completed that day
-  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.doneAt === day);
-  const totalTasks = S.tasks.filter(t => !t.archived && t.dueDate === day).length;
+  // Get tasks completed that day, excluding future goal tasks
+  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.doneAt === day && !isTaskFromFutureGoal(t));
+  const totalTasks = S.tasks.filter(t => !t.archived && t.dueDate === day && !isTaskFromFutureGoal(t)).length;
   
   const totalDone = doneHabits.length + doneTasks.length;
   const totalItems = totalHabits + Math.max(totalTasks, doneTasks.length);
@@ -2371,54 +2739,32 @@ function buildGoalsSummary(){
 
 function buildGoalsContent(){
   const el = document.getElementById('goals-page-content'); if(!el) return;
-  const goals = S.goals.filter(g=>!g.archived);
-  ensureOrder(goals);
+  const allGoals = S.goals.filter(g=>!g.archived);
+  const activeGoals = allGoals.filter(g=>!g.future);
+  const futureGoals = allGoals.filter(g=>g.future);
+  ensureOrder(activeGoals);
+  ensureOrder(futureGoals);
 
-  if(!goals.length && !S.projects.filter(p=>!p.goalId&&!p.archived).length){
+  if(!allGoals.length && !S.projects.filter(p=>!p.goalId&&!p.archived).length){
     el.innerHTML=`<div style="text-align:center;padding:40px 0;">
       <div style="font-size:2rem;margin-bottom:10px;">&#127919;</div>
       <div style="font-size:.85rem;color:var(--tx2);font-weight:600;margin-bottom:5px;">No goals yet</div>
-      <div style="font-size:.75rem;color:var(--tx3);">Add a goal in Settings → Workspace</div>
+      <div style="font-size:.75rem;color:var(--tx3);">Tap the + button to add a goal</div>
     </div>`;
     return;
   }
 
-  let html = `<div id="goals-drag-list">`;
-  goals.forEach(g=>{
-    const col = AREA_COLORS[g.area]||'var(--a)';
-    const projs = S.projects.filter(p=>p.goalId===g.id&&!p.archived);
-    ensureOrder(projs);
-    const done  = projs.filter(p=>p.status==='complete').length;
-    const pct   = projs.length ? Math.round(done/projs.length*100) : 0;
-    const doneColor = done === projs.length && projs.length > 0 ? 'var(--green)' : done > 0 ? 'var(--teal)' : 'var(--tx3)';
-    html += `<div class="swipe-container drag-item" data-id="${g.id}" style="margin-bottom:11px;">
-      <div class="swipe-actions">
-        <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
-        <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
-        <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
-      </div>
-      <div class="swipe-content entity-card" style="margin-bottom:0;">
-        <div class="entity-hdr" style="background:${col}12;border-bottom:1px solid ${col}22;">
-          <span class="drag-handle" onclick="event.stopPropagation()">&#9776;</span>
-          <div style="flex:1;min-width:0;cursor:pointer;" onclick="toggleSection('gp-${g.id}')">
-            <div style="display:flex;align-items:center;gap:7px;">
-              <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-              <div class="drag-label entity-name">${g.name}</div>
-            </div>
-            <div class="entity-sub" style="margin-left:16px;">${g.area} · <span style="color:${doneColor};font-weight:600;">${done}</span>/${projs.length} projects</div>
-            <div class="pb" style="margin-top:5px;height:4px;margin-left:16px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
-          </div>
-          <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
-        </div>
-        <div id="gp-${g.id}" style="display:none;padding:8px 0 4px;">
-          <div id="proj-drag-${g.id}">
-            ${projs.length ? projs.map(p=>renderGoalPageProjRow(p,g.id)).join('') : '<div style="font-size:.72rem;color:var(--tx3);padding:4px 12px 8px;">No projects yet.</div>'}
-          </div>
-        </div>
-      </div>
-    </div>`;
-  });
-  html += `</div>`;
+  let html = '';
+  
+  // Active Goals section
+  if(activeGoals.length){
+    html += `<div class="sl">Active Goals</div>`;
+    html += `<div id="goals-drag-list">`;
+    activeGoals.forEach(g=>{
+      html += renderGoalCard(g);
+    });
+    html += `</div>`;
+  }
 
   // Standalone projects
   const standalone = S.projects.filter(p=>!p.goalId&&!p.archived);
@@ -2430,17 +2776,41 @@ function buildGoalsContent(){
     </div>`;
   }
 
+  // Future Goals section (collapsible)
+  if(futureGoals.length){
+    html += `<div onclick="toggleSection('future-goals-list')" style="display:flex;align-items:center;gap:8px;margin-top:18px;cursor:pointer;padding:10px 12px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);">
+      <span style="font-size:.85rem;">🕐</span>
+      <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--tx2);">Future Goals</div>
+      <span style="font-size:.68rem;color:var(--tx3);font-weight:600;">${futureGoals.length}</span>
+      <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+    </div>`;
+    html += `<div id="future-goals-list" style="display:none;margin-top:8px;">`;
+    futureGoals.forEach(g=>{
+      html += renderFutureGoalCard(g);
+    });
+    html += `</div>`;
+  }
+
   el.innerHTML = html;
 
-  // Wire drag on goals list
-  const activeGoals = S.goals.filter(g=>!g.archived);
-  makeDraggable('#goals-drag-list', ()=>activeGoals, buildGoalsPage);
+  // Wire drag on active goals list
+  if(activeGoals.length){
+    makeDraggable('#goals-drag-list', ()=>activeGoals, ()=>{
+      S.goals.sort((a,b)=>(a.order||0)-(b.order||0));
+      save();
+      buildGoalsPage();
+    });
 
-  // Wire drag on each goal's projects list
-  goals.forEach(g=>{
-    const projArr = S.projects.filter(p=>p.goalId===g.id&&!p.archived);
-    makeDraggable('#proj-drag-'+g.id, ()=>projArr, buildGoalsPage);
-  });
+    // Wire drag on each goal's projects list
+    activeGoals.forEach(g=>{
+      const projArr = S.projects.filter(p=>p.goalId===g.id&&!p.archived);
+      makeDraggable('#proj-drag-'+g.id, ()=>projArr, ()=>{
+        S.projects.sort((a,b)=>(a.order||0)-(b.order||0));
+        save();
+        buildGoalsPage();
+      });
+    });
+  }
 
   // Wire drag on standalone projects
   if(standalone.length){
@@ -2449,6 +2819,60 @@ function buildGoalsContent(){
   
   // Wire swipe gestures for goals
   wireSwipeGestures();
+}
+
+function renderGoalCard(g){
+  const col = AREA_COLORS[g.area]||'var(--a)';
+  const projs = S.projects.filter(p=>p.goalId===g.id&&!p.archived);
+  ensureOrder(projs);
+  const done  = projs.filter(p=>p.status==='complete').length;
+  const pct   = projs.length ? Math.round(done/projs.length*100) : 0;
+  const doneColor = done === projs.length && projs.length > 0 ? 'var(--green)' : done > 0 ? 'var(--teal)' : 'var(--tx3)';
+  return `<div class="swipe-container drag-item" data-id="${g.id}" style="margin-bottom:11px;">
+    <div class="swipe-actions">
+      <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
+      <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
+      <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
+    </div>
+    <div class="swipe-content entity-card" style="margin-bottom:0;">
+      <div class="entity-hdr" style="background:${col}12;border-bottom:1px solid ${col}22;">
+        <span class="drag-handle" onclick="event.stopPropagation()">&#9776;</span>
+        <div style="flex:1;min-width:0;cursor:pointer;" onclick="toggleSection('gp-${g.id}')">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+            <div class="drag-label entity-name">${g.name}</div>
+          </div>
+          <div class="entity-sub" style="margin-left:16px;">${g.area} · <span style="color:${doneColor};font-weight:600;">${done}</span>/${projs.length} projects</div>
+          <div class="pb" style="margin-top:5px;height:4px;margin-left:16px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
+        </div>
+        <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
+      </div>
+      <div id="gp-${g.id}" style="display:none;padding:8px 0 4px;">
+        <div id="proj-drag-${g.id}">
+          ${projs.length ? projs.map(p=>renderGoalPageProjRow(p,g.id)).join('') : '<div style="font-size:.72rem;color:var(--tx3);padding:4px 12px 8px;">No projects yet.</div>'}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderFutureGoalCard(g){
+  const col = AREA_COLORS[g.area]||'var(--a)';
+  return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:8px;opacity:.75;">
+    <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:.82rem;font-weight:600;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
+      <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${g.area}</div>
+    </div>
+    <button onclick="activateGoal('${g.id}')" class="btn btsm btg">Activate</button>
+    <button onclick="openGoalEdit('${g.id}')" class="btn btsm btgh">Edit</button>
+  </div>`;
+}
+
+function activateGoal(goalId){
+  const g = S.goals.find(g=>g.id===goalId); if(!g) return;
+  g.future = false;
+  save(); buildGoalsPage(); toast('Goal activated ✓');
 }
 
 function renderGoalPageProjRow(p, groupId){
@@ -2506,6 +2930,10 @@ function openGoalEdit(goalId){
         ${Object.keys(AREA_COLORS).map(a=>`<option value="${a}" ${g.area===a?'selected':''}>${a}</option>`).join('')}
       </select>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <label class="tog"><input type="checkbox" id="ge-future" ${g.future?'checked':''}><span class="tog-slider"></span></label>
+      <span style="font-size:.75rem;color:var(--tx2);">Start later (hide until activated)</span>
+    </div>
     <button class="btn btp bfu" onclick="saveGoalEdit('${goalId}')">Save changes</button>
     <button class="btn btr bfu" style="margin-top:7px;" onclick="archiveGoal('${goalId}');closeModal('modal-main')">Archive goal</button>`;
   openModal('modal-main');
@@ -2518,6 +2946,7 @@ function saveGoalEdit(goalId){
   if(!name){ toast('Enter a name'); return; }
   g.name = name;
   g.area = document.getElementById('ge-area')?.value||g.area;
+  g.future = document.getElementById('ge-future')?.checked||false;
   save(); closeModal('modal-main'); buildGoalsPage(); toast('Goal updated ✓');
 }
 
@@ -2714,15 +3143,20 @@ function quickAddGoalBody(){
       ${Object.keys(AREA_COLORS).map(a=>`<option value="${a}">${a}</option>`).join('')}
     </select>
   </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+    <label class="tog"><input type="checkbox" id="qa-future"><span class="tog-slider"></span></label>
+    <span style="font-size:.75rem;color:var(--tx2);">Start later (hide until activated)</span>
+  </div>
   <button class="btn btp bfu" onclick="saveGoal()">Create goal</button>`;
 }
 
 function quickAddProjectBody(preGoalId){
-  const goals=S.goals.filter(g=>!g.archived);
+  // Only show active goals (not archived, not future)
+  const goals=S.goals.filter(g=>!g.archived && !g.future);
   return `<div class="igrp"><label class="ilbl">Project name</label><input class="inp" id="qa-name" placeholder="e.g. 12-week cut"/></div>
-  <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
+  <div class="igrp"><label class="ilbl">Goal <span style="color:var(--red);">*</span></label>
     <select class="inp" id="qa-goal" style="appearance:none;">
-      <option value="">— no goal —</option>
+      <option value="">— select goal —</option>
       ${goals.map(g=>`<option value="${g.id}" ${g.id===preGoalId?'selected':''}>${g.name}</option>`).join('')}
     </select>
   </div>
@@ -2731,8 +3165,9 @@ function quickAddProjectBody(preGoalId){
 }
 
 function quickAddHabitBody(){
-  const projs=S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
-  const goals=S.goals.filter(g=>!g.archived);
+  // Only show active goals and projects (not archived, not future)
+  const goals=S.goals.filter(g=>!g.archived && !g.future);
+  const projs=S.projects.filter(p=>!p.archived && p.status!=='abandoned' && !isProjectFromFutureGoal(p));
   return `<div class="igrp"><label class="ilbl">Habit name</label><input class="inp" id="qa-name" placeholder="e.g. Gym"/></div>
   <div class="igrp"><label class="ilbl">Target days / week</label>
     <select class="inp" id="qa-days" style="appearance:none;">
@@ -2740,15 +3175,15 @@ function quickAddHabitBody(){
       <option value="4">4×/wk</option><option value="3">3×/wk</option><option value="2">2×/wk</option><option value="1">1×/wk</option>
     </select>
   </div>
-  <div class="igrp"><label class="ilbl">Link to project (optional)</label>
-    <select class="inp" id="qa-proj" style="appearance:none;">
-      <option value="">— no project —</option>
+  <div class="igrp"><label class="ilbl">Project <span style="color:var(--red);">*</span></label>
+    <select class="inp" id="qa-proj" style="appearance:none;" onchange="onHabitProjChange()">
+      <option value="">— select project —</option>
       ${projs.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
     </select>
   </div>
-  <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
-    <select class="inp" id="qa-goal" style="appearance:none;">
-      <option value="">— no goal —</option>
+  <div class="igrp"><label class="ilbl">Goal <span style="color:var(--red);">*</span></label>
+    <select class="inp" id="qa-goal" style="appearance:none;" onchange="onHabitGoalChange()">
+      <option value="">— select goal —</option>
       ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
     </select>
   </div>
@@ -2783,13 +3218,15 @@ function quickAddTaskBody(){
 function saveGoal(){
   const name=document.getElementById('qa-name')?.value.trim(); if(!name){ toast('Enter a name'); return; }
   const area=document.getElementById('qa-area')?.value||'Other';
-  S.goals.push({id:uid(),name,area,archived:false,createdAt:today()});
+  const future=document.getElementById('qa-future')?.checked||false;
+  S.goals.push({id:uid(),name,area,archived:false,future,createdAt:today()});
   save(); closeModal('modal-main'); buildGoalsPage(); buildWorkspace(); toast('Goal created ✓');
 }
 
 function saveProject(){
   const name=document.getElementById('qa-name')?.value.trim(); if(!name){ toast('Enter a name'); return; }
   const goalId=document.getElementById('qa-goal')?.value||null;
+  if(!goalId){ toast('Please select a goal'); return; }
   const deadline=document.getElementById('qa-deadline')?.value||'';
   S.projects.push({id:uid(),name,goalId,deadline,archived:false,status:'active',createdAt:today()});
   save(); closeModal('modal-main'); buildGoalsPage(); buildWorkspace(); toast('Project created ✓');
@@ -2797,13 +3234,41 @@ function saveProject(){
 
 function saveHabit(){
   const name=document.getElementById('qa-name')?.value.trim(); if(!name){ toast('Enter a name'); return; }
-  const targetDays=parseInt(document.getElementById('qa-days')?.value)||7;
-  const projId=document.getElementById('qa-proj')?.value||null;
   const goalId=document.getElementById('qa-goal')?.value||null;
+  const projId=document.getElementById('qa-proj')?.value||null;
+  if(!goalId){ toast('Please select a goal'); return; }
+  if(!projId){ toast('Please select a project'); return; }
+  const targetDays=parseInt(document.getElementById('qa-days')?.value)||7;
   const hint=document.getElementById('qa-hint')?.value.trim()||'';
   const reasonEnabled=document.getElementById('qa-reason')?.checked||false;
   S.habits.push({id:uid(),name,targetDays,projId,goalId,hint,reasonEnabled,archived:false,createdAt:today()});
   save(); closeModal('modal-main'); buildWorkspace(); buildDailyView(); toast('Habit added ✓');
+}
+
+function onHabitProjChange(){
+  const projId = document.getElementById('qa-proj')?.value;
+  const goalSelect = document.getElementById('qa-goal');
+  if(!goalSelect || !projId) return;
+  
+  // Auto-fill goal from project's goalId
+  const proj = S.projects.find(p=>p.id===projId);
+  if(proj && proj.goalId){
+    goalSelect.value = proj.goalId;
+  }
+}
+
+function onHabitGoalChange(){
+  const goalId = document.getElementById('qa-goal')?.value;
+  const projSelect = document.getElementById('qa-proj');
+  if(!projSelect) return;
+  
+  // Filter projects by selected goal
+  const projs = S.projects.filter(p=>!p.archived && p.status!=='abandoned' && !isProjectFromFutureGoal(p));
+  let filteredProjs = goalId ? projs.filter(p => p.goalId === goalId) : projs;
+  
+  // Rebuild project dropdown
+  projSelect.innerHTML = `<option value="">— select project —</option>` +
+    filteredProjs.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
 }
 
 function saveTask(){
@@ -2842,6 +3307,13 @@ function archiveGoal(id){
 
 function archiveHabit(id){
   const h=S.habits.find(h=>h.id===id); if(!h) return;
+  
+  // Check if editing is locked (committed + after 12 PM) for committed habits
+  if(isEditingLocked() && isHabitCommittedToday(id)){
+    toast('Cannot archive — locked after 12 PM');
+    return;
+  }
+  
   h.archived=true;
   save(); buildGoalsPage(); buildWorkspace(); buildDailyView();
   const b=document.getElementById('ws-archive-body'); if(b) b.style.display='block';
@@ -2850,6 +3322,13 @@ function archiveHabit(id){
 
 function openHabitEdit(habId){
   const h=S.habits.find(h=>h.id===habId); if(!h) return;
+  
+  // Check if editing is locked (committed + after 12 PM)
+  if(isEditingLocked() && isHabitCommittedToday(habId)){
+    toast('Editing locked after 12 PM');
+    return;
+  }
+  
   const projs=S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
   const goals=S.goals.filter(g=>!g.archived);
   document.getElementById('modal-title').textContent='Edit habit';
