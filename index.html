@@ -588,6 +588,12 @@ const AREA_COLORS = {
   'Projects':'var(--teal)','Other':'var(--a)'
 };
 
+const AREA_EMOJIS = {
+  'Health':'💪','Career':'💼',
+  'Personal Dev':'🌱','Learning':'📚',
+  'Projects':'🛠️','Other':'✨'
+};
+
 let S = {};
 try{ S = JSON.parse(localStorage.getItem('a26v38')||'{}'); }catch(e){}
 
@@ -1389,8 +1395,8 @@ function buildDoneSection(){
     getHabitState(td, h.id) === 'done' && shouldShowHabitToday(h)
   );
   
-  // Get done tasks (due today or overdue, and completed)
-  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.dueDate && t.dueDate <= td);
+  // Get done tasks (completed TODAY only)
+  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.doneAt === td);
   
   const totalDone = doneHabits.length + doneTasks.length;
   
@@ -1470,9 +1476,9 @@ function updateRing(){
   habits.forEach(h=>{ const s=getHabitState(td,h.id); if(s==='done') habitsDone++; else if(s==='skipped') habitsSkip++; });
   const habitsTotal=habits.length;
   
-  // Get today's tasks (due today or overdue), excluding future goal tasks
-  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t));
-  const tasksDone = todayTasks.filter(t=>t.done).length;
+  // Get today's tasks: due today or overdue, NOT completed OR completed today
+  const todayTasks = S.tasks.filter(t=>!t.archived&&!isTaskFromFutureGoal(t)&&t.dueDate&&t.dueDate<=td&&(!t.done || t.doneAt===td));
+  const tasksDone = todayTasks.filter(t=>t.done && t.doneAt===td).length;
   const tasksTotal = todayTasks.length;
   
   // Combined totals for ring
@@ -1542,9 +1548,9 @@ function updateHeroStats(){
   const habits = allHabits.filter(h => shouldShowHabitToday(h));
   const habitsDone=habits.filter(h=>getHabitState(td,h.id)==='done').length;
   
-  // Get today's tasks (due today or overdue)
-  const todayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
-  const tasksDone = todayTasks.filter(t=>t.done).length;
+  // Get today's tasks (due today or overdue, and NOT completed yet OR completed today)
+  const todayTasks = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && t.dueDate && t.dueDate<=td && (!t.done || t.doneAt===td));
+  const tasksDone = todayTasks.filter(t=>t.done && t.doneAt===td).length;
   
   // Combined totals
   const combinedDone = habitsDone + tasksDone;
@@ -2232,21 +2238,23 @@ function buildTrackerHabits(){
   <div style="margin-bottom:22px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <div class="sl" style="margin:0;">&#128200; Daily Trend</div>
-      <div style="display:flex;gap:5px;">${[4,6,8,12].map(n=>`<button class="btn btsm ${n===dashWeeks?'btp':'btgh'}" onclick="setDashWeeks(${n})">${n}w</button>`).join('')}</div>
+      <select id="dash-weeks-select" onchange="setDashWeeks(parseInt(this.value))" style="padding:6px 12px;font-size:.72rem;font-weight:600;background:var(--sur);color:var(--tx);border:1px solid var(--bdr);border-radius:var(--r2);appearance:none;-webkit-appearance:none;cursor:pointer;min-width:70px;text-align:center;">
+        ${[1,2,3,4,6,8,12].map(n=>`<option value="${n}" ${n===dashWeeks?'selected':''}>${n} week${n>1?'s':''}</option>`).join('')}
+      </select>
     </div>
     <div style="position:relative;margin-bottom:10px;">
-      <button onclick="toggleTrendDrop()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);font-size:.78rem;color:var(--tx2);">
+      <button onclick="toggleTrendDrop()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);font-size:.78rem;color:var(--tx2);">
         <span id="trend-drop-label">${dashHabits.length===0?'Default: daily completion count':`${dashHabits.length} habit${dashHabits.length>1?'s':''} selected`}</span>
         <span style="font-size:.7rem;color:var(--tx3);">▾</span>
       </button>
-      <div id="trend-drop-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);box-shadow:0 8px 32px rgba(0,0,0,.18);max-height:260px;overflow-y:auto;">
-        <div style="padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;gap:8px;">
+      <div id="trend-drop-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);box-shadow:0 8px 32px rgba(0,0,0,.25);max-height:260px;overflow-y:auto;">
+        <div style="padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;gap:8px;background:var(--sur);">
           <button class="btn btsm btgh" onclick="clearTrendHabits()" style="flex:1;">Reset to default</button>
         </div>
-        <div id="trend-drop-list"></div>
+        <div id="trend-drop-list" style="background:var(--sur);"></div>
       </div>
     </div>
-    <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;">
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;">
       <div style="height:170px;position:relative;"><canvas id="c-trend"></canvas></div>
     </div>
     <div style="text-align:center;font-size:.68rem;color:var(--tx3);margin-top:7px;">${dashHabits.length===0?'Showing daily habits completed vs target · Select habits above to compare individual trends':''}</div>
@@ -2337,11 +2345,27 @@ function renderSelectedDayDetails(day, habits){
   });
   const groupList = Object.values(groups);
   
-  // Tasks stats
+  // Tasks stats - check commitment for that day
+  const commitment = S.commitments?.[day];
+  const committedTaskIds = commitment?.taskIds || [];
+  const committedCount = committedTaskIds.length;
   const tasksDone = dayData.doneTasks.length;
-  const tasksTotal = tasksDone; // We only know completed tasks for historical days
-  const tasksPct = tasksTotal > 0 ? 100 : 0;
-  const tasksColor = tasksPct >= 90 ? 'var(--green)' : tasksPct >= 70 ? 'var(--teal)' : 'var(--blue)';
+  
+  // If we have commitment data, show committed vs done
+  // Otherwise just show done count
+  let tasksLabel = '';
+  let tasksPct = 0;
+  let tasksColor = 'var(--teal)';
+  
+  if(committedCount > 0){
+    tasksPct = Math.round(tasksDone / committedCount * 100);
+    tasksLabel = `${tasksDone}/${committedCount} committed`;
+    tasksColor = tasksPct >= 100 ? 'var(--green)' : tasksPct >= 70 ? 'var(--teal)' : 'var(--red)';
+  } else if(tasksDone > 0){
+    tasksPct = 100;
+    tasksLabel = `${tasksDone} done`;
+    tasksColor = 'var(--teal)';
+  }
   
   let html = `<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:12px;margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -2364,13 +2388,13 @@ function renderSelectedDayDetails(day, habits){
     </div>
     
     <!-- Tasks Progress Bar -->
-    ${tasksDone > 0 ? `
+    ${tasksLabel ? `
     <div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
         <span style="font-size:.68rem;color:var(--tx2);">📋 Tasks</span>
-        <span style="font-size:.62rem;color:${tasksColor};font-weight:600;">${tasksDone} done</span>
+        <span style="font-size:.62rem;color:${tasksColor};font-weight:600;">${tasksLabel}</span>
       </div>
-      <div class="pb" style="height:5px;margin:0;"><div class="pf" style="width:100%;background:${tasksColor};"></div></div>
+      <div class="pb" style="height:5px;margin:0;"><div class="pf" style="width:${Math.min(tasksPct,100)}%;background:${tasksColor};"></div></div>
     </div>` : ''}`;
   
   // Only show skipped and missed for past days (not today)
@@ -2507,11 +2531,12 @@ function renderTrendChart(habits){
   
   const blocks=getWeekBlocks(dashWeeks);
   const totalHabits = habits.length;
+  const td = today();
   
   // Default view: daily completion count with target line
   if(!dashHabits.length){
-    // Calculate daily completion counts for each day across all weeks
-    const allDays = blocks.flatMap(b => b.days);
+    // Calculate daily completion counts for each day across all weeks - ONLY UP TO TODAY
+    const allDays = blocks.flatMap(b => b.days).filter(d => d <= td);
     const labels = allDays.map(d => {
       const dt = new Date(d + 'T12:00:00');
       return dt.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
@@ -2577,16 +2602,22 @@ function renderTrendChart(habits){
   }
   
   // Individual habit comparison view (when habits are selected)
+  // Filter blocks to only include days up to today
+  const filteredBlocks = blocks.map(b => ({
+    ...b,
+    days: b.days.filter(d => d <= td)
+  })).filter(b => b.days.length > 0);
+  
   const PALETTE_RGB=['232,98,42','59,130,246','34,197,94','168,85,247','245,166,35','20,184,166','239,68,68','99,102,241'];
   const datasets=dashHabits.map((hid,i)=>{
     const h=habits.find(h=>h.id===hid); if(!h) return null;
     const rgb=PALETTE_RGB[i%PALETTE_RGB.length];
-    return {label:h.name,data:blocks.map(b=>habitRate(hid,b.days)),borderColor:`rgba(${rgb},1)`,backgroundColor:`rgba(${rgb},.07)`,fill:dashHabits.length===1,tension:.4,pointRadius:4,pointBackgroundColor:`rgba(${rgb},1)`,borderWidth:2.5};
+    return {label:h.name,data:filteredBlocks.map(b=>habitRate(hid,b.days)),borderColor:`rgba(${rgb},1)`,backgroundColor:`rgba(${rgb},.07)`,fill:dashHabits.length===1,tension:.4,pointRadius:4,pointBackgroundColor:`rgba(${rgb},1)`,borderWidth:2.5};
   }).filter(Boolean);
   if(!datasets.length) return;
   setTimeout(()=>{
     const cv=document.getElementById('c-trend'); if(!cv) return;
-    trendChart=new Chart(cv,{type:'line',data:{labels:blocks.map(b=>b.label),datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:datasets.length>1,position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10,color:'#888'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}}},scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
+    trendChart=new Chart(cv,{type:'line',data:{labels:filteredBlocks.map(b=>b.label),datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:datasets.length>1,position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10,color:'#888'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}}},scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
   },50);
 }
 
@@ -2823,6 +2854,7 @@ function buildGoalsContent(){
 
 function renderGoalCard(g){
   const col = AREA_COLORS[g.area]||'var(--a)';
+  const emoji = AREA_EMOJIS[g.area]||'✨';
   const projs = S.projects.filter(p=>p.goalId===g.id&&!p.archived);
   ensureOrder(projs);
   const done  = projs.filter(p=>p.status==='complete').length;
@@ -2830,6 +2862,8 @@ function renderGoalCard(g){
   const doneColor = done === projs.length && projs.length > 0 ? 'var(--green)' : done > 0 ? 'var(--teal)' : 'var(--tx3)';
   return `<div class="swipe-container drag-item" data-id="${g.id}" style="margin-bottom:11px;">
     <div class="swipe-actions">
+      <button class="btn btsm btgh" onclick="event.stopPropagation();moveGoalUp('${g.id}')" title="Move up">↑</button>
+      <button class="btn btsm btgh" onclick="event.stopPropagation();moveGoalDown('${g.id}')" title="Move down">↓</button>
       <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
       <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
       <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
@@ -2839,11 +2873,11 @@ function renderGoalCard(g){
         <span class="drag-handle" onclick="event.stopPropagation()">&#9776;</span>
         <div style="flex:1;min-width:0;cursor:pointer;" onclick="toggleSection('gp-${g.id}')">
           <div style="display:flex;align-items:center;gap:7px;">
-            <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+            <span style="font-size:.9rem;">${emoji}</span>
             <div class="drag-label entity-name">${g.name}</div>
           </div>
-          <div class="entity-sub" style="margin-left:16px;">${g.area} · <span style="color:${doneColor};font-weight:600;">${done}</span>/${projs.length} projects</div>
-          <div class="pb" style="margin-top:5px;height:4px;margin-left:16px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
+          <div class="entity-sub" style="margin-left:24px;">${g.area} · <span style="color:${doneColor};font-weight:600;">${done}</span>/${projs.length} projects</div>
+          <div class="pb" style="margin-top:5px;height:4px;margin-left:24px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
         </div>
         <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
       </div>
@@ -2858,8 +2892,9 @@ function renderGoalCard(g){
 
 function renderFutureGoalCard(g){
   const col = AREA_COLORS[g.area]||'var(--a)';
+  const emoji = AREA_EMOJIS[g.area]||'✨';
   return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:8px;opacity:.75;">
-    <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+    <span style="font-size:.9rem;">${emoji}</span>
     <div style="flex:1;min-width:0;">
       <div style="font-size:.82rem;font-weight:600;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
       <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${g.area}</div>
@@ -2873,6 +2908,38 @@ function activateGoal(goalId){
   const g = S.goals.find(g=>g.id===goalId); if(!g) return;
   g.future = false;
   save(); buildGoalsPage(); toast('Goal activated ✓');
+}
+
+function moveGoalUp(goalId){
+  const activeGoals = S.goals.filter(g => !g.archived && !g.future);
+  ensureOrder(activeGoals);
+  activeGoals.sort((a,b) => (a.order||0) - (b.order||0));
+  const idx = activeGoals.findIndex(g => g.id === goalId);
+  if(idx <= 0) return; // Already at top
+  
+  // Swap with previous
+  const temp = activeGoals[idx].order;
+  activeGoals[idx].order = activeGoals[idx-1].order;
+  activeGoals[idx-1].order = temp;
+  
+  S.goals.sort((a,b) => (a.order||0) - (b.order||0));
+  save(); buildGoalsPage(); toast('Moved up ✓');
+}
+
+function moveGoalDown(goalId){
+  const activeGoals = S.goals.filter(g => !g.archived && !g.future);
+  ensureOrder(activeGoals);
+  activeGoals.sort((a,b) => (a.order||0) - (b.order||0));
+  const idx = activeGoals.findIndex(g => g.id === goalId);
+  if(idx < 0 || idx >= activeGoals.length - 1) return; // Already at bottom
+  
+  // Swap with next
+  const temp = activeGoals[idx].order;
+  activeGoals[idx].order = activeGoals[idx+1].order;
+  activeGoals[idx+1].order = temp;
+  
+  S.goals.sort((a,b) => (a.order||0) - (b.order||0));
+  save(); buildGoalsPage(); toast('Moved down ✓');
 }
 
 function renderGoalPageProjRow(p, groupId){
@@ -3002,13 +3069,14 @@ function buildWsGoals(){
   if(!goals.length){ el.innerHTML='<div style="font-size:.75rem;color:var(--tx3);padding:4px 0 10px;">No goals yet.</div>'; return; }
   el.innerHTML=goals.map(g=>{
     const col=AREA_COLORS[g.area]||'var(--a)';
+    const emoji=AREA_EMOJIS[g.area]||'✨';
     const projs=S.projects.filter(p=>p.goalId===g.id&&!p.archived);
     const goHabits=S.habits.filter(h=>h.goalId===g.id&&!h.projId&&!h.archived);
     const done=projs.filter(p=>p.status==='complete').length;
     const pct=projs.length?Math.round(done/projs.length*100):0;
     return `<div class="entity-card">
       <div class="entity-hdr" style="background:${col}08;" onclick="toggleSection('g-${g.id}')">
-        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <span style="font-size:.9rem;">${emoji}</span>
         <div style="flex:1;">
           <div class="entity-name">${g.name}</div>
           <div class="entity-sub">${g.area} · ${done}/${projs.length} projects · ${pct}%</div>
