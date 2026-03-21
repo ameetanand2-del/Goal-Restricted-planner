@@ -177,8 +177,11 @@ input,textarea,select{font-family:inherit;}
 .entity-body{padding:6px 13px 13px;background:var(--sur);}
 .swipe-container{position:relative;overflow:hidden;}
 .swipe-content{position:relative;background:var(--bg);transition:transform .25s ease;z-index:2;}
-.swipe-actions{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--sur);z-index:1;}
+.swipe-actions{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--bg);z-index:1;}
 .swipe-container.swiped .swipe-content{transform:translateX(-220px);}
+.task-swipe{border-radius:var(--r2);background:var(--bg);}
+.task-swipe .swipe-content{background:#f4f6fa;}
+.task-swipe.swiped .swipe-content{transform:translateX(-140px);}
 .child-row{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;}
 .child-info{flex:1;}
 .child-name{font-size:.8rem;font-weight:600;}
@@ -1472,30 +1475,136 @@ function buildTasksList(){
     // Wire drag for flat list
     makeDraggable('#tg-all', ()=>tasks, buildTasksList);
   }
+  
+  // Wire swipe gestures for task rows
+  wireTaskSwipeGestures();
+}
+
+function wireTaskSwipeGestures(){
+  const containers = document.querySelectorAll('.task-swipe');
+  containers.forEach(container=>{
+    const content = container.querySelector('.swipe-content');
+    if(!content) return;
+    
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let isSwiping = false;
+    let isHorizontalSwipe = null;
+    const isAlreadyOpen = () => container.classList.contains('swiped');
+    
+    content.addEventListener('touchstart', e=>{
+      if(e.target.closest('.drag-handle')) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      currentX = startX;
+      isSwiping = true;
+      isHorizontalSwipe = null;
+    }, {passive:true});
+    
+    content.addEventListener('touchmove', e=>{
+      if(!isSwiping) return;
+      currentX = e.touches[0].clientX;
+      const currentY = e.touches[0].clientY;
+      const diffX = startX - currentX;
+      const diffY = Math.abs(startY - currentY);
+      
+      if(isHorizontalSwipe === null && (Math.abs(diffX) > 10 || diffY > 10)){
+        isHorizontalSwipe = Math.abs(diffX) > diffY;
+      }
+      
+      if(isHorizontalSwipe){
+        e.preventDefault();
+        if(isAlreadyOpen()){
+          if(diffX < -15){
+            const translateX = Math.max(0, 140 + diffX);
+            content.style.transform = `translateX(-${translateX}px)`;
+            content.style.transition = 'none';
+          }
+        } else {
+          if(diffX > 15){
+            const translateX = Math.min(140, Math.max(0, diffX));
+            content.style.transform = `translateX(-${translateX}px)`;
+            content.style.transition = 'none';
+          }
+        }
+      }
+    }, {passive:false});
+    
+    content.addEventListener('touchend', ()=>{
+      if(!isSwiping) return;
+      isSwiping = false;
+      content.style.transition = 'transform .25s ease';
+      const diff = startX - currentX;
+      
+      if(isAlreadyOpen()){
+        if(diff < -60){
+          container.classList.remove('swiped');
+        }
+        content.style.transform = '';
+      } else {
+        if(isHorizontalSwipe && diff > 60){
+          // Close other open swipes
+          document.querySelectorAll('.task-swipe.swiped').forEach(c=>{
+            if(c !== container) c.classList.remove('swiped');
+          });
+          container.classList.add('swiped');
+        }
+        content.style.transform = '';
+      }
+      isHorizontalSwipe = null;
+    });
+  });
 }
 
 function renderTaskRow(t){
   const td = today();
   const overdue = !t.done && t.dueDate && t.dueDate < td;
   const dueToday = !t.done && t.dueDate === td;
-  return `<div class="drag-item" data-id="${t.id}" style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--sur);border:1px solid ${overdue?'rgba(239,68,68,.25)':t.done?'rgba(34,197,94,.15)':'var(--bdr)'};border-radius:var(--r2);margin-bottom:5px;">
-    <span class="drag-handle" style="margin-top:2px;">&#9776;</span>
-    <div onclick="toggleTask('${t.id}');buildTasksList();buildDailyTasks();"
-      style="width:20px;height:20px;border-radius:50%;border:2px solid ${t.done?'var(--green)':overdue?'var(--red)':'var(--bdr2)'};background:${t.done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;margin-top:1px;transition:all .15s;">
-      ${t.done?'<span style="color:#fff;font-size:.6rem;">&#10003;</span>':''}
+  const futureDue = !t.done && t.dueDate && t.dueDate > td;
+  const dateColor = overdue ? 'var(--red)' : futureDue ? 'var(--blue)' : dueToday ? 'var(--a2)' : 'var(--tx3)';
+  const borderColor = overdue ? 'rgba(239,68,68,.25)' : t.done ? 'rgba(34,197,94,.15)' : 'var(--bdr)';
+  
+  return `<div class="swipe-container task-swipe drag-item" data-id="${t.id}" style="margin-bottom:5px;border-radius:var(--r2);">
+    <div class="swipe-actions">
+      <button onclick="openTaskEdit('${t.id}');closeTaskSwipe(this)" class="btn btsm btb">Edit</button>
+      <button onclick="archiveTask('${t.id}')" class="btn btsm btr">Delete</button>
     </div>
-    <div style="flex:1;min-width:0;">
-      <div class="drag-label" style="font-size:.83rem;font-weight:500;${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;">
-        ${t.dueDate?`<span style="font-size:.6rem;font-weight:600;color:${overdue?'var(--red)':dueToday?'var(--a2)':'var(--tx3)'};">${overdue?'Overdue · ':dueToday?'Today · ':''}${t.dueDate}</span>`:''}
-        ${t.done&&t.doneAt?`<span style="font-size:.6rem;color:var(--green);">Done ${t.doneAt}</span>`:''}
+    <div class="swipe-content" style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid ${borderColor};border-radius:var(--r2);">
+      <span class="drag-handle" style="margin-top:2px;">&#9776;</span>
+      <div onclick="toggleTask('${t.id}');buildTasksList();buildDailyTasks();"
+        style="width:20px;height:20px;border-radius:50%;border:2px solid ${t.done?'var(--green)':overdue?'var(--red)':'var(--bdr2)'};background:${t.done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;margin-top:1px;transition:all .15s;">
+        ${t.done?'<span style="color:#fff;font-size:.6rem;">&#10003;</span>':''}
+      </div>
+      <div style="flex:1;min-width:0;" onclick="toggleTaskSwipe(this)">
+        <div class="drag-label" style="font-size:.83rem;font-weight:500;${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;">
+          ${t.dueDate?`<span style="font-size:.62rem;font-weight:600;color:${dateColor};">${overdue?'⚠ Overdue':futureDue?'📅 '+formatDateShort(t.dueDate):dueToday?'Today':t.dueDate}</span>`:''}
+          ${t.done&&t.doneAt?`<span style="font-size:.6rem;color:var(--green);">✓ Done ${t.doneAt}</span>`:''}
+        </div>
       </div>
     </div>
-    <div style="display:flex;gap:4px;flex-shrink:0;">
-      <button onclick="openTaskEdit('${t.id}')" style="font-size:.65rem;color:var(--blue);padding:3px 8px;border-radius:6px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.15);">Edit</button>
-      <button onclick="archiveTask('${t.id}')" style="font-size:.65rem;color:var(--tx3);padding:3px 8px;border-radius:6px;background:var(--sur);border:1px solid var(--bdr);">&#128465;</button>
-    </div>
   </div>`;
+}
+
+function formatDateShort(dateStr){
+  const d = new Date(dateStr+'T12:00:00');
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+
+function toggleTaskSwipe(el){
+  const container = el.closest('.swipe-container');
+  if(!container) return;
+  // Close any other open swipes
+  document.querySelectorAll('.task-swipe.swiped').forEach(c=>{
+    if(c !== container) c.classList.remove('swiped');
+  });
+  container.classList.toggle('swiped');
+}
+
+function closeTaskSwipe(el){
+  const container = el.closest('.swipe-container');
+  if(container) container.classList.remove('swiped');
 }
 
 function quickAddTask(){
