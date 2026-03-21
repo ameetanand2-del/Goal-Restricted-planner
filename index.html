@@ -62,6 +62,11 @@ input,textarea,select{font-family:inherit;}
 .ni{font-size:.92rem;line-height:1;}
 .nl{font-size:.5rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
 
+/* Floating Action Button */
+#fab-container{position:fixed;bottom:calc(var(--navh) + var(--sb) + 12px);right:16px;z-index:25;}
+.fab{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--a),#d4541f);color:#fff;font-size:1.6rem;font-weight:300;border:none;box-shadow:0 4px 16px rgba(232,98,42,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,box-shadow .15s;}
+.fab:active{transform:scale(.95);box-shadow:0 2px 8px rgba(232,98,42,.3);}
+
 .tab-switch{display:flex;gap:0;background:var(--sur);border:1px solid var(--bdr);border-radius:99px;padding:3px;margin-bottom:14px;}
 .ts-btn{flex:1;padding:6px 8px;border-radius:99px;font-size:.72rem;font-weight:600;color:var(--tx3);transition:all .2s;text-align:center;cursor:pointer;}
 .ts-btn.on{background:var(--a);color:#fff;box-shadow:0 2px 10px rgba(232,98,42,.3);}
@@ -396,12 +401,6 @@ select.inp{appearance:none;}
 <!-- ═══ TASKS ════════════════════════════════════════════════════════════ -->
 <div class="page" id="page-plan"><div class="pi">
 
-  <!-- Quick add bar always at top -->
-  <div class="qabar">
-    <input class="qa-inp" id="task-quick-inp" placeholder="Type a task or tap Add…" onkeydown="if(event.key==='Enter')quickAddTask()"/>
-    <button class="qa-btn" onclick="quickAddTask()">+ Add</button>
-  </div>
-
   <!-- Filter row -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px;">
     <button class="ts-btn on" id="tf-open"   onclick="setTaskFilter('open',this)"   style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:6px 13px;font-size:.72rem;font-weight:600;">Open</button>
@@ -534,6 +533,11 @@ select.inp{appearance:none;}
 
 </div><!-- end scroll -->
 
+<!-- Floating Add Button -->
+<div id="fab-container" style="display:none;">
+  <button class="fab" onclick="openTaskAddModal()">+</button>
+</div>
+
 <nav class="nav">
   <button class="nb on" id="nb-home"     onclick="goTab('home',this)"><div class="ni">&#127968;</div><div class="nl">Daily</div></button>
   <button class="nb"    id="nb-plan"     onclick="goTab('plan',this)"><div class="ni">&#9989;</div><div class="nl">Tasks</div></button>
@@ -657,6 +661,10 @@ function goTab(id, el){
   // Scroll to top on every tab switch
   const scroller = document.querySelector('.scroll');
   if(scroller) scroller.scrollTop = 0;
+  // Show/hide FAB based on tab
+  const fab = document.getElementById('fab-container');
+  if(fab) fab.style.display = (id === 'plan') ? 'block' : 'none';
+  
   if(id==='home')     buildDailyView();
   if(id==='plan')     buildWeeklyView();
   if(id==='progress') buildTracker();
@@ -1505,15 +1513,15 @@ function openNewTaskModal(prefill){
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="nt-name" placeholder="What needs to be done…" value="${prefill||''}"/></div>
     <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="nt-due"/></div>
-    <div class="igrp"><label class="ilbl">Link to project (optional)</label>
-      <select class="inp" id="nt-proj" style="appearance:none;">
-        <option value="">— no project —</option>
-        ${projs.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+    <div class="igrp"><label class="ilbl">Project <span style="color:var(--red);">*</span></label>
+      <select class="inp" id="nt-proj" style="appearance:none;" onchange="onTaskProjChange()">
+        <option value="">— select project —</option>
+        ${projs.map(p=>`<option value="${p.id}" data-goal="${p.goalId||''}">${p.name}</option>`).join('')}
       </select>
     </div>
-    <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
-      <select class="inp" id="nt-goal" style="appearance:none;">
-        <option value="">— no goal —</option>
+    <div class="igrp"><label class="ilbl">Goal <span style="color:var(--red);">*</span></label>
+      <select class="inp" id="nt-goal" style="appearance:none;" onchange="onTaskGoalChange()">
+        <option value="">— select goal —</option>
         ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
       </select>
     </div>
@@ -1523,12 +1531,47 @@ function openNewTaskModal(prefill){
   setTimeout(()=>document.getElementById('nt-name')?.focus(),120);
 }
 
+function onTaskGoalChange(){
+  const goalId = document.getElementById('nt-goal')?.value;
+  const projSelect = document.getElementById('nt-proj');
+  if(!projSelect) return;
+  
+  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
+  
+  // Filter projects by selected goal
+  let filteredProjs = goalId ? projs.filter(p => p.goalId === goalId) : projs;
+  
+  // Rebuild project dropdown
+  projSelect.innerHTML = `<option value="">— select project —</option>` +
+    filteredProjs.map(p => `<option value="${p.id}" data-goal="${p.goalId||''}">${p.name}</option>`).join('');
+}
+
+function onTaskProjChange(){
+  const projSelect = document.getElementById('nt-proj');
+  const goalSelect = document.getElementById('nt-goal');
+  if(!projSelect || !goalSelect) return;
+  
+  const projId = projSelect.value;
+  if(!projId) return;
+  
+  // Find the project and auto-fill its goal
+  const proj = S.projects.find(p => p.id === projId);
+  if(proj && proj.goalId){
+    goalSelect.value = proj.goalId;
+  }
+}
+
+// Alias for FAB button
+function openTaskAddModal(){ openNewTaskModal(''); }
+
 function saveNewTask(){
   const name = document.getElementById('nt-name')?.value.trim();
   if(!name){ toast('Enter a task name'); return; }
-  const dueDate = document.getElementById('nt-due')?.value||null;
-  const projId  = document.getElementById('nt-proj')?.value||null;
   const goalId  = document.getElementById('nt-goal')?.value||null;
+  const projId  = document.getElementById('nt-proj')?.value||null;
+  if(!goalId){ toast('Please select a goal'); return; }
+  if(!projId){ toast('Please select a project'); return; }
+  const dueDate = document.getElementById('nt-due')?.value||null;
   const notes   = document.getElementById('nt-notes')?.value.trim()||'';
   S.tasks.push({id:uid(),name,dueDate,projId,goalId,notes,done:false,archived:false,createdAt:today()});
   save(); closeModal('modal-main'); buildTasksList(); buildDailyTasks(); toast('Task added ✓');
