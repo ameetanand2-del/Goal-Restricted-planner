@@ -1003,7 +1003,9 @@ function buildDailyTasks(){
     Object.values(groups).forEach(g=>{
       const groupTasks = g.tasks;
       makeDraggable('#dtg-'+gi, ()=>groupTasks, ()=>{
-        saveDailyTaskOrder();
+        // The groupTasks array has been reordered by reorderArr
+        // Save the new order to dailyTaskOrder
+        saveDailyTaskOrderFromArray(groupTasks);
         buildDailyTasks();
       });
       gi++;
@@ -1016,19 +1018,30 @@ function buildDailyTasks(){
     
     if(list) list.innerHTML = html;
     
-    // Wire drag for flat list
+    // Wire drag for flat list - tasks array will be reordered by makeDraggable
     makeDraggable('#dtg-all', ()=>tasks, ()=>{
-      saveDailyTaskOrder();
+      // The tasks array has been reordered by reorderArr
+      // Save the new order to dailyTaskOrder
+      saveDailyTaskOrderFromArray(tasks);
       buildDailyTasks();
     });
   }
 }
 
-function saveDailyTaskOrder(){
+function saveDailyTaskOrderFromArray(reorderedTasks){
   const td = today();
-  // Get all tasks due today (including done ones for order preservation)
-  const allTodayTasks = S.tasks.filter(t=>!t.archived&&t.dueDate&&t.dueDate<=td);
-  S.dailyTaskOrder = allTodayTasks.map(t=>t.id);
+  // Start with the reordered task IDs
+  const orderedIds = reorderedTasks.map(t => t.id);
+  
+  // Add any other tasks due today that aren't in this list (e.g., from other groups, done tasks)
+  const allTodayTasks = S.tasks.filter(t => !t.archived && t.dueDate && t.dueDate <= td);
+  allTodayTasks.forEach(t => {
+    if(!orderedIds.includes(t.id)){
+      orderedIds.push(t.id);
+    }
+  });
+  
+  S.dailyTaskOrder = orderedIds;
   save();
 }
 
@@ -1039,10 +1052,10 @@ function renderDailyTaskRow(t){
   const sub = proj?proj.name:goal?goal.name:'';
   const overdue = t.dueDate < td;
   return `<div class="task-d drag-item" data-id="${t.id}">
-    <span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.75rem;color:var(--tx3);padding:4px 5px 4px 0;">&#9776;</span>
-    <div class="task-d-check" onclick="toggleDailyTask('${t.id}')"></div>
+    <span class="drag-handle" style="font-size:.85rem;color:var(--tx3);padding:6px 8px 6px 2px;cursor:grab;touch-action:none;">☰</span>
+    <div class="task-d-check" onclick="event.stopPropagation();toggleDailyTask('${t.id}')"></div>
     <div style="flex:1;" onclick="toggleDailyTask('${t.id}')">
-      <div class="task-d-label">${t.name}</div>
+      <div class="task-d-label drag-label">${t.name}</div>
       ${sub||overdue?`<div class="task-d-sub">${overdue&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?' · '+sub:''}</div>`:''}
     </div>
   </div>`;
