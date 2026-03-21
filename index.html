@@ -66,6 +66,11 @@ input,textarea,select{font-family:inherit;}
 #fab-container{position:fixed;bottom:calc(var(--navh) + var(--sb) + 12px);right:16px;z-index:25;}
 .fab{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--a),#d4541f);color:#fff;font-size:1.6rem;font-weight:300;border:none;box-shadow:0 4px 16px rgba(232,98,42,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,box-shadow .15s;}
 .fab:active{transform:scale(.95);box-shadow:0 2px 8px rgba(232,98,42,.3);}
+.fab.open{transform:rotate(45deg);}
+.fab-item{padding:12px 16px;font-size:.8rem;font-weight:500;color:var(--tx);cursor:pointer;transition:background .15s;border-bottom:1px solid var(--bdr);}
+.fab-item:last-child{border-bottom:none;}
+.fab-item:active{background:var(--sur);}
+.fab-item-add{color:var(--a);font-weight:600;}
 
 .tab-switch{display:flex;gap:0;background:var(--sur);border:1px solid var(--bdr);border-radius:99px;padding:3px;margin-bottom:14px;}
 .ts-btn{flex:1;padding:6px 8px;border-radius:99px;font-size:.72rem;font-weight:600;color:var(--tx3);transition:all .2s;text-align:center;cursor:pointer;}
@@ -401,18 +406,6 @@ select.inp{appearance:none;}
 <!-- ═══ TASKS ════════════════════════════════════════════════════════════ -->
 <div class="page" id="page-plan"><div class="pi">
 
-  <!-- Filter row -->
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px;">
-    <button class="ts-btn on" id="tf-open"   onclick="setTaskFilter('open',this)"   style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:6px 13px;font-size:.72rem;font-weight:600;">Open</button>
-    <button class="ts-btn"    id="tf-today"  onclick="setTaskFilter('today',this)"  style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:6px 13px;font-size:.72rem;font-weight:600;">Today</button>
-    <button class="ts-btn"    id="tf-done"   onclick="setTaskFilter('done',this)"   style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:6px 13px;font-size:.72rem;font-weight:600;">Done</button>
-    <button class="ts-btn"    id="tf-all"    onclick="setTaskFilter('all',this)"    style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:6px 13px;font-size:.72rem;font-weight:600;">All</button>
-    <div style="flex:1;"></div>
-    <button id="task-group-toggle" onclick="toggleTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:6px 10px;font-size:.68rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
-      <span id="task-group-icon">▤</span> <span id="task-group-label">Grouped</span>
-    </button>
-  </div>
-
   <div id="tasks-list-content"></div>
 
 </div></div>
@@ -533,9 +526,16 @@ select.inp{appearance:none;}
 
 </div><!-- end scroll -->
 
-<!-- Floating Add Button -->
+<!-- Floating Action Button with Menu -->
 <div id="fab-container" style="display:none;">
-  <button class="fab" onclick="openTaskAddModal()">+</button>
+  <div id="fab-menu" style="display:none;position:absolute;bottom:60px;right:0;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:140px;">
+    <div class="fab-item" onclick="setTaskFilter('all');closeFabMenu()">All</div>
+    <div class="fab-item" onclick="setTaskFilter('done');closeFabMenu()">Done</div>
+    <div class="fab-item" onclick="setTaskFilter('today');closeFabMenu()">Today</div>
+    <div class="fab-item" onclick="setTaskFilter('open');closeFabMenu()">Open</div>
+    <div class="fab-item fab-item-add" onclick="openTaskAddModal();closeFabMenu()">+ Add Task</div>
+  </div>
+  <button class="fab" onclick="toggleFabMenu()">+</button>
 </div>
 
 <nav class="nav">
@@ -1563,6 +1563,36 @@ function onTaskProjChange(){
 
 // Alias for FAB button
 function openTaskAddModal(){ openNewTaskModal(''); }
+
+function toggleFabMenu(){
+  const menu = document.getElementById('fab-menu');
+  const fab = document.querySelector('.fab');
+  if(!menu) return;
+  const isOpen = menu.style.display === 'block';
+  menu.style.display = isOpen ? 'none' : 'block';
+  if(fab) fab.classList.toggle('open', !isOpen);
+  
+  // Close menu when clicking outside
+  if(!isOpen){
+    setTimeout(()=>{
+      document.addEventListener('click', closeFabMenuOnOutside, {once:true});
+    }, 10);
+  }
+}
+
+function closeFabMenuOnOutside(e){
+  const container = document.getElementById('fab-container');
+  if(container && !container.contains(e.target)){
+    closeFabMenu();
+  }
+}
+
+function closeFabMenu(){
+  const menu = document.getElementById('fab-menu');
+  const fab = document.querySelector('.fab');
+  if(menu) menu.style.display = 'none';
+  if(fab) fab.classList.remove('open');
+}
 
 function saveNewTask(){
   const name = document.getElementById('nt-name')?.value.trim();
