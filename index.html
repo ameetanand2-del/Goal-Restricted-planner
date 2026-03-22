@@ -394,7 +394,12 @@ select.inp{appearance:none;}
   <div id="plan-day-section"></div>
 
   <!-- Today's habits label -->
-  <div class="sl" style="margin-top:14px;">✨ Today's habits</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:8px;">
+    <div class="sl" style="margin:0;">✨ Today's habits</div>
+    <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+      <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
+    </button>
+  </div>
 
   <!-- Habits list (grouped) -->
   <div id="daily-habits-list"></div>
@@ -639,8 +644,11 @@ def('lastActiveDate',null);
 def('eodQuestions',[]);
 def('reflectionJournal',{}); // {date: [{qid, question, answer}]}
 def('dailyTaskOrder',[]); // [taskId, taskId, ...] — persistent task order in daily view
+def('dailyTaskGroupOrder',[]); // [groupKey, groupKey, ...] — order of task groups in daily view
 def('plannedHabits',{}); // {date: {habitId: 'yes'|'nottoday'}} — planning decisions for non-daily habits
 def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'unlocked'|'claimed',progress:{},unlockedAt,claimedAt,createdAt}]
+def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit groups in daily view
+def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in sequence mode
 
 const APP_VERSION = 'v40';
 
@@ -1258,51 +1266,182 @@ function buildDailyHabits(){
     return;
   }
 
-  // Group habits
-  const groups = {};
-  habits.forEach(h=>{
-    const key = h.projId||h.goalId||'__standalone';
-    if(!groups[key]) groups[key]={label:groupLabel(h),color:habitColor(h),habits:[],key};
-    groups[key].habits.push(h);
-  });
-
-  let gHtml = '';
-  let gCount = 0;
-  Object.values(groups).forEach(g=>{
-    ensureOrder(g.habits);
-    const skippedCount = g.habits.filter(h=>getHabitState(td,h.id)==='skipped').length;
-    const totalCount = g.habits.length;
-    const col = g.color;
-    const bodyId = 'hgrp-'+gCount;
-    // Default to CLOSED
-    const startOpen = false;
-    const rows = g.habits.map(h=>renderHabitRow(h,td,locked)).join('');
-    gHtml += `<div style="margin-bottom:8px;border:1px solid ${col}22;border-radius:var(--r2);overflow:hidden;">
-      <div onclick="toggleSection('${bodyId}')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${col}10;user-select:none;">
-        <div style="width:6px;height:6px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-        <div style="flex:1;font-size:.78rem;font-weight:700;">${g.label}</div>
-        <div style="display:flex;align-items:center;gap:7px;">
-          <span style="font-size:.67rem;font-weight:700;color:${col};">${totalCount} left${skippedCount?' · '+skippedCount+' skipped':''}</span>
-          <span style="font-size:.62rem;color:var(--tx3);">▾</span>
-        </div>
-      </div>
-      <div id="${bodyId}" style="display:${startOpen?'block':'none'};">
-        <div class="cks" id="hgrp-inner-${gCount}">${rows}</div>
-      </div>
-    </div>`;
-    gCount++;
-  });
-  el.innerHTML = gHtml;
-
-  // Wire drag per group (only when not locked)
-  if(!locked){
-    let gi = 0;
-    Object.values(groups).forEach(g=>{
-      const grpHabits = g.habits;
-      makeDraggable('#hgrp-inner-'+gi, ()=>grpHabits, ()=>{ buildDailyHabits(); updateRing(); });
-      gi++;
+  if(dailyHabitGrouped){
+    // GROUPED MODE - Group habits by project/goal
+    const groups = {};
+    habits.forEach(h=>{
+      const key = h.projId||h.goalId||'__standalone';
+      if(!groups[key]) groups[key]={label:groupLabel(h),color:habitColor(h),habits:[],key};
+      groups[key].habits.push(h);
     });
+
+    // Sort groups by saved order or default (standalone last)
+    if(!S.dailyHabitGroupOrder) S.dailyHabitGroupOrder = [];
+    const groupKeys = Object.keys(groups);
+    groupKeys.sort((a,b) => {
+      const aIdx = S.dailyHabitGroupOrder.indexOf(a);
+      const bIdx = S.dailyHabitGroupOrder.indexOf(b);
+      // Both have saved order
+      if(aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      // Only one has saved order
+      if(aIdx !== -1) return -1;
+      if(bIdx !== -1) return 1;
+      // Neither has saved order - standalone last
+      if(a === '__standalone') return 1;
+      if(b === '__standalone') return -1;
+      return groups[a].label.localeCompare(groups[b].label);
+    });
+
+    let gHtml = '<div id="daily-habit-groups">';
+    let gCount = 0;
+    groupKeys.forEach(key=>{
+      const g = groups[key];
+      ensureOrder(g.habits);
+      const skippedCount = g.habits.filter(h=>getHabitState(td,h.id)==='skipped').length;
+      const totalCount = g.habits.length;
+      const col = g.color;
+      const bodyId = 'hgrp-'+gCount;
+      // Default to CLOSED
+      const startOpen = false;
+      const rows = g.habits.map(h=>renderHabitRow(h,td,locked)).join('');
+      gHtml += `<div class="drag-item habit-group-card" data-id="${key}" style="margin-bottom:8px;border:1px solid ${col}22;border-radius:var(--r2);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${col}10;user-select:none;">
+          ${locked?'':`<span class="drag-handle" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;">☰</span>`}
+          <div style="width:6px;height:6px;border-radius:50%;background:${col};flex-shrink:0;" onclick="toggleSection('${bodyId}')"></div>
+          <div style="flex:1;font-size:.78rem;font-weight:700;" onclick="toggleSection('${bodyId}')">${g.label}</div>
+          <div style="display:flex;align-items:center;gap:7px;" onclick="toggleSection('${bodyId}')">
+            <span style="font-size:.67rem;font-weight:700;color:${col};">${totalCount} left${skippedCount?' · '+skippedCount+' skipped':''}</span>
+            <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+          </div>
+        </div>
+        <div id="${bodyId}" style="display:${startOpen?'block':'none'};">
+          <div class="cks" id="hgrp-inner-${gCount}">${rows}</div>
+        </div>
+      </div>`;
+      gCount++;
+    });
+    gHtml += '</div>';
+    el.innerHTML = gHtml;
+
+    // Wire drag for groups (reorder groups themselves)
+    if(!locked){
+      wireGroupDrag();
+      
+      // Wire drag per group for habits within
+      let gi = 0;
+      groupKeys.forEach(key=>{
+        const grpHabits = groups[key].habits;
+        makeDraggable('#hgrp-inner-'+gi, ()=>grpHabits, ()=>{ buildDailyHabits(); updateRing(); });
+        gi++;
+      });
+    }
+  } else {
+    // SEQUENCE MODE - Flat list of all habits
+    // Apply saved order
+    if(!S.dailyHabitOrder) S.dailyHabitOrder = [];
+    habits.sort((a,b) => {
+      const aIdx = S.dailyHabitOrder.indexOf(a.id);
+      const bIdx = S.dailyHabitOrder.indexOf(b.id);
+      if(aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if(aIdx !== -1) return -1;
+      if(bIdx !== -1) return 1;
+      return 0;
+    });
+    
+    const rows = habits.map(h=>renderHabitRow(h,td,locked)).join('');
+    el.innerHTML = `<div class="cks" id="daily-habits-flat">${rows}</div>`;
+    
+    // Wire drag for flat list
+    if(!locked){
+      makeDraggable('#daily-habits-flat', ()=>habits, ()=>{
+        // Save the new order
+        S.dailyHabitOrder = habits.map(h => h.id);
+        save();
+        buildDailyHabits();
+        updateRing();
+      });
+    }
   }
+}
+
+function wireGroupDrag(){
+  const container = document.getElementById('daily-habit-groups');
+  if(!container) return;
+  
+  const items = Array.from(container.querySelectorAll('.habit-group-card'));
+  if(!items.length) return;
+  
+  let dragIdx = null;
+  let overIdx = null;
+  
+  function getIdx(el){ return items.indexOf(el); }
+  
+  function startDrag(el, x, y){
+    dragIdx = getIdx(el);
+    el.classList.add('dragging');
+    const label = el.querySelector('[style*="font-weight:700"]')?.textContent || '';
+    _createGhost(label);
+    _moveGhost(x, y);
+  }
+  
+  function moveDrag(x, y){
+    _moveGhost(x, y);
+    items.forEach(it => it.classList.remove('drag-over'));
+    const el = document.elementFromPoint(x, y);
+    const target = el ? el.closest('.habit-group-card') : null;
+    if(target && target !== items[dragIdx]){
+      overIdx = getIdx(target);
+      target.classList.add('drag-over');
+    } else {
+      overIdx = null;
+    }
+  }
+  
+  function endDrag(){
+    _destroyGhost();
+    items.forEach(it => { it.classList.remove('dragging'); it.classList.remove('drag-over'); });
+    if(dragIdx !== null && overIdx !== null && dragIdx !== overIdx){
+      // Reorder the saved group order
+      const currentOrder = items.map(it => it.dataset.id);
+      const [moved] = currentOrder.splice(dragIdx, 1);
+      currentOrder.splice(overIdx, 0, moved);
+      S.dailyHabitGroupOrder = currentOrder;
+      save();
+      buildDailyHabits();
+      updateRing();
+    }
+    dragIdx = null;
+    overIdx = null;
+  }
+  
+  items.forEach(item => {
+    const handle = item.querySelector('.drag-handle');
+    if(!handle) return;
+    
+    // Mouse
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      startDrag(item, e.clientX, e.clientY);
+      const onMove = ev => { ev.preventDefault(); moveDrag(ev.clientX, ev.clientY); };
+      const onUp = () => { endDrag(); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+    
+    // Touch
+    handle.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      startDrag(item, t.clientX, t.clientY);
+    }, {passive: true});
+    
+    handle.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      moveDrag(t.clientX, t.clientY);
+    }, {passive: false});
+    
+    handle.addEventListener('touchend', () => endDrag());
+  });
 }
 
 function renderHabitRow(h, date, locked){
@@ -1340,6 +1479,17 @@ function saveReason(habId){
   if(!S.habitReasons) S.habitReasons={};
   S.habitReasons[today()+'_'+habId]=el.value.trim();
   save(); toast('Reason saved ✓');
+}
+
+let dailyHabitGrouped = true;
+
+function toggleDailyHabitGrouping(){
+  dailyHabitGrouped = !dailyHabitGrouped;
+  const icon = document.getElementById('daily-habit-group-icon');
+  const label = document.getElementById('daily-habit-group-label');
+  if(icon) icon.textContent = dailyHabitGrouped ? '▤' : '▥';
+  if(label) label.textContent = dailyHabitGrouped ? 'Grouped' : 'Sequence';
+  buildDailyHabits();
 }
 
 let dailyTaskGrouped = true;
@@ -1382,7 +1532,7 @@ function buildDailyTasks(){
     tasks.forEach(t=>{
       const key = t.projId?'proj:'+t.projId : t.goalId?'goal:'+t.goalId : '__none';
       if(!groups[key]) {
-        let label='', color='var(--tx3)';
+        let label='Ungrouped', color='var(--tx3)';
         if(t.projId){ const p=S.projects.find(p=>p.id===t.projId); label=p?p.name:'Unknown'; color=p?projectColor(p):'var(--a)'; }
         else if(t.goalId){ const g=S.goals.find(g=>g.id===t.goalId); label=g?g.name:'Unknown'; color=g?AREA_COLORS[g.area]||'var(--a)':'var(--a)'; }
         groups[key]={label,color,tasks:[],key};
@@ -1390,26 +1540,51 @@ function buildDailyTasks(){
       groups[key].tasks.push(t);
     });
     
+    // Sort groups by saved order
+    if(!S.dailyTaskGroupOrder) S.dailyTaskGroupOrder = [];
+    const groupKeys = Object.keys(groups);
+    groupKeys.sort((a,b) => {
+      const aIdx = S.dailyTaskGroupOrder.indexOf(a);
+      const bIdx = S.dailyTaskGroupOrder.indexOf(b);
+      if(aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if(aIdx !== -1) return -1;
+      if(bIdx !== -1) return 1;
+      // Ungrouped last
+      if(a === '__none') return 1;
+      if(b === '__none') return -1;
+      return groups[a].label.localeCompare(groups[b].label);
+    });
+    
+    html = '<div id="daily-task-groups">';
     let gIdx = 0;
-    Object.values(groups).forEach(g=>{
+    groupKeys.forEach(key=>{
+      const g = groups[key];
       const isUngrouped = g.key === '__none';
       const bodyId = 'dtg-'+gIdx;
+      const leftCount = g.tasks.filter(t => !t.done).length;
       
       if(isUngrouped){
-        // Ungrouped tasks are always open, no header
-        html += `<div id="${bodyId}" class="daily-task-group">
-          ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
+        // Ungrouped tasks - still draggable as a group
+        html += `<div class="drag-item task-group-card" data-id="${key}" style="margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);user-select:none;">
+            <span class="drag-handle" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;cursor:grab;">☰</span>
+            <div style="flex:1;font-size:.75rem;font-weight:700;color:var(--tx3);" onclick="toggleSection('${bodyId}')">Ungrouped</div>
+            <span style="font-size:.62rem;color:var(--teal);font-weight:700;">${leftCount} left</span>
+            <span style="font-size:.62rem;color:var(--tx3);" onclick="toggleSection('${bodyId}')">▾</span>
+          </div>
+          <div id="${bodyId}" class="daily-task-group" style="margin-top:5px;">
+            ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
+          </div>
         </div>`;
       } else {
-        // Grouped tasks have collapsible header (closed by default)
-        const leftCount = g.tasks.filter(t => !t.done).length;
-        html += `<div style="margin-bottom:8px;">
-          <div onclick="toggleSection('${bodyId}')" 
-            style="display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;background:${g.color}10;border:1px solid ${g.color}22;border-radius:var(--r2);user-select:none;">
-            <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
-            <div style="flex:1;font-size:.75rem;font-weight:700;color:${g.color};">${g.label}</div>
+        // Grouped tasks have collapsible header
+        html += `<div class="drag-item task-group-card" data-id="${key}" style="margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;background:${g.color}10;border:1px solid ${g.color}22;border-radius:var(--r2);user-select:none;">
+            <span class="drag-handle" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;cursor:grab;">☰</span>
+            <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;" onclick="toggleSection('${bodyId}')"></div>
+            <div style="flex:1;font-size:.75rem;font-weight:700;color:${g.color};" onclick="toggleSection('${bodyId}')">${g.label}</div>
             <span style="font-size:.62rem;color:var(--teal);font-weight:700;">${leftCount} left</span>
-            <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+            <span style="font-size:.62rem;color:var(--tx3);" onclick="toggleSection('${bodyId}')">▾</span>
           </div>
           <div id="${bodyId}" class="daily-task-group" style="display:none;margin-top:5px;">
             ${g.tasks.map(t=>renderDailyTaskRow(t)).join('')}
@@ -1418,16 +1593,18 @@ function buildDailyTasks(){
       }
       gIdx++;
     });
+    html += '</div>';
     
     if(list) list.innerHTML = html;
     
-    // Wire drag reorder per group
+    // Wire drag for task groups
+    wireTaskGroupDrag();
+    
+    // Wire drag reorder per group for tasks within
     let gi = 0;
-    Object.values(groups).forEach(g=>{
-      const groupTasks = g.tasks;
+    groupKeys.forEach(key=>{
+      const groupTasks = groups[key].tasks;
       makeDraggable('#dtg-'+gi, ()=>groupTasks, ()=>{
-        // The groupTasks array has been reordered by reorderArr
-        // Save the new order to dailyTaskOrder
         saveDailyTaskOrderFromArray(groupTasks);
         buildDailyTasks();
       });
@@ -1449,6 +1626,85 @@ function buildDailyTasks(){
       buildDailyTasks();
     });
   }
+}
+
+function wireTaskGroupDrag(){
+  const container = document.getElementById('daily-task-groups');
+  if(!container) return;
+  
+  const items = Array.from(container.querySelectorAll('.task-group-card'));
+  if(!items.length) return;
+  
+  let dragIdx = null;
+  let overIdx = null;
+  
+  function getIdx(el){ return items.indexOf(el); }
+  
+  function startDrag(el, x, y){
+    dragIdx = getIdx(el);
+    el.classList.add('dragging');
+    const label = el.querySelector('[style*="font-weight:700"]')?.textContent || '';
+    _createGhost(label);
+    _moveGhost(x, y);
+  }
+  
+  function moveDrag(x, y){
+    _moveGhost(x, y);
+    items.forEach(it => it.classList.remove('drag-over'));
+    const el = document.elementFromPoint(x, y);
+    const target = el ? el.closest('.task-group-card') : null;
+    if(target && target !== items[dragIdx]){
+      overIdx = getIdx(target);
+      target.classList.add('drag-over');
+    } else {
+      overIdx = null;
+    }
+  }
+  
+  function endDrag(){
+    _destroyGhost();
+    items.forEach(it => { it.classList.remove('dragging'); it.classList.remove('drag-over'); });
+    if(dragIdx !== null && overIdx !== null && dragIdx !== overIdx){
+      // Reorder the saved group order
+      const currentOrder = items.map(it => it.dataset.id);
+      const [moved] = currentOrder.splice(dragIdx, 1);
+      currentOrder.splice(overIdx, 0, moved);
+      S.dailyTaskGroupOrder = currentOrder;
+      save();
+      buildDailyTasks();
+    }
+    dragIdx = null;
+    overIdx = null;
+  }
+  
+  items.forEach(item => {
+    const handle = item.querySelector('.drag-handle');
+    if(!handle) return;
+    
+    // Mouse
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      startDrag(item, e.clientX, e.clientY);
+      const onMove = ev => { ev.preventDefault(); moveDrag(ev.clientX, ev.clientY); };
+      const onUp = () => { endDrag(); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+    
+    // Touch
+    handle.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      startDrag(item, t.clientX, t.clientY);
+    }, {passive: true});
+    
+    handle.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      moveDrag(t.clientX, t.clientY);
+    }, {passive: false});
+    
+    handle.addEventListener('touchend', () => endDrag());
+  });
 }
 
 function saveDailyTaskOrderFromArray(reorderedTasks){
