@@ -367,7 +367,7 @@ select.inp{appearance:none;}
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <div class="sg3" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
-      <div class="stile"><div class="sv" id="hstreak" style="color:var(--blue)">0</div><div class="slb">Streak</div></div>
+      <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0</div><div class="slb">Tasks</div></div>
       <div class="stile" onclick="openDueDateEditor()" style="cursor:pointer;">
         <div class="sv" id="hwleft" style="color:var(--a2);font-size:.62rem;font-weight:700;line-height:1.3;">—</div>
         <div class="slb">Left</div>
@@ -1162,9 +1162,17 @@ function getNonDailyHabitsNeedingPlan(){
 // Check if a habit should be shown in daily view
 function shouldShowHabitToday(h){
   const td = today();
-  const planned = S.plannedHabits?.[td] || {};
+  return shouldShowHabitOnDay(h, td);
+}
+
+// Check if a habit should be counted for a specific day
+function shouldShowHabitOnDay(h, day){
+  const planned = S.plannedHabits?.[day] || {};
   
-  // Daily habits always show
+  // Check if explicitly opted out for this day
+  if(getHabitState(day, h.id) === 'optedout') return false;
+  
+  // Daily habits always show (unless opted out above)
   if(h.targetDays === 7) return true;
   
   // Non-daily: only show if planned as 'yes'
@@ -1850,6 +1858,27 @@ function undoHabit(habId){
   updateCompleteDayBtn();
 }
 
+// Undo habit for a specific past day - marks as "opted out" (not required)
+function undoHabitForDay(habId, day){
+  setHabitState(day, habId, 'optedout');
+  save();
+  buildTrackerHabits();
+  toast('Habit marked as not required');
+}
+
+// Redo habit for a specific past day - marks as done
+function redoHabitForDay(habId, day){
+  setHabitState(day, habId, 'done');
+  save();
+  buildTrackerHabits();
+  toast('Habit marked as done');
+}
+
+// Get habits that were opted out for a specific day
+function getOptedOutHabits(day, habits){
+  return habits.filter(h => getHabitState(day, h.id) === 'optedout');
+}
+
 function undoTask(taskId){
   const t = S.tasks.find(t => t.id === taskId); if(!t) return;
   t.done = false;
@@ -1948,26 +1977,17 @@ function updateHeroStats(){
   // Get today's tasks (due today or overdue, and NOT completed yet OR completed today)
   const todayTasks = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && t.dueDate && t.dueDate<=td && (!t.done || t.doneAt===td));
   const tasksDone = todayTasks.filter(t=>t.done && t.doneAt===td).length;
+  const tasksTotal = todayTasks.length;
   
   // Combined totals
   const combinedDone = habitsDone + tasksDone;
   const combinedTotal = habits.length + todayTasks.length;
   
   document.getElementById('hhabits').textContent=combinedDone+'/'+combinedTotal;
-  // Streak
-  let streak=0;
-  for(let i=1;i<365;i++){
-    const d=new Date(); d.setDate(d.getDate()-i);
-    const ds=d.toISOString().split('T')[0];
-    const log=S.habitLog?.[ds];
-    if(!log) break;
-    const vals=Object.entries(log).filter(([k])=>!k.startsWith('__'));
-    if(!vals.length) break;
-    const pct=vals.filter(([,v])=>v==='done').length/vals.length;
-    if(pct<0.7) break;
-    streak++;
-  }
-  document.getElementById('hstreak').textContent=streak;
+  
+  // Tasks count (show remaining or total)
+  const tasksRemaining = tasksTotal - tasksDone;
+  document.getElementById('htasks').textContent = tasksRemaining > 0 ? tasksRemaining : (tasksTotal > 0 ? '✓' : '0');
 }
 
 function updateWksLeftTile(){
@@ -2695,14 +2715,28 @@ function wireRingDayClicks(){
 }
 
 function getDayCompletionData(day, habits){
-  // Get habits by state
-  const doneHabits = habits.filter(h => getHabitState(day, h.id) === 'done');
-  const skippedHabits = habits.filter(h => getHabitState(day, h.id) === 'skipped');
-  const missedHabits = habits.filter(h => {
+  // Filter to only habits that should be counted for this day
+  const activeHabits = habits.filter(h => shouldShowHabitOnDay(h, day));
+  
+  // Get habits by state (from active habits only)
+  const doneHabits = activeHabits.filter(h => getHabitState(day, h.id) === 'done');
+  const skippedHabits = activeHabits.filter(h => getHabitState(day, h.id) === 'skipped');
+  const missedHabits = activeHabits.filter(h => {
     const state = getHabitState(day, h.id);
     return state !== 'done' && state !== 'skipped' && day <= today();
   });
-  const totalHabits = habits.length;
+  
+  // Get opted out habits (from all habits, not just active)
+  const optedOutHabits = habits.filter(h => getHabitState(day, h.id) === 'optedout');
+  
+  // Get "not today" habits (non-daily habits that weren't planned for this day)
+  const notTodayHabits = habits.filter(h => {
+    if(h.targetDays === 7) return false; // daily habits can't be "not today"
+    const planned = S.plannedHabits?.[day] || {};
+    return planned[h.id] === 'nottoday';
+  });
+  
+  const totalHabits = activeHabits.length;
   
   // Get tasks completed that day, excluding future goal tasks
   const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.doneAt === day && !isTaskFromFutureGoal(t));
@@ -2712,7 +2746,7 @@ function getDayCompletionData(day, habits){
   const totalItems = totalHabits + Math.max(totalTasks, doneTasks.length);
   const pct = totalItems ? Math.round(totalDone / totalItems * 100) : 0;
   
-  return { doneHabits, skippedHabits, missedHabits, doneTasks, totalHabits, totalTasks: doneTasks.length, pct };
+  return { doneHabits, skippedHabits, optedOutHabits, notTodayHabits, missedHabits, doneTasks, totalHabits, totalTasks: doneTasks.length, pct };
 }
 
 function setWeeklyRingOffset(n){
@@ -2732,9 +2766,12 @@ function renderSelectedDayDetails(day, habits){
   const dateObj = new Date(day+'T12:00:00');
   const dateLabel = dateObj.toLocaleDateString('en-GB',{weekday:'short', day:'numeric', month:'short'});
   
-  // Group habits by project/goal for progress bars
+  // Get active habits for this day (habits that should be counted)
+  const activeHabits = habits.filter(h => shouldShowHabitOnDay(h, day));
+  
+  // Group habits by project/goal for progress bars (only active habits)
   const groups = {};
-  habits.forEach(h => {
+  activeHabits.forEach(h => {
     const key = h.projId || h.goalId || '__standalone';
     if(!groups[key]) groups[key] = { label: groupLabel(h), color: habitColor(h), done: 0, total: 0 };
     groups[key].total++;
@@ -2767,7 +2804,7 @@ function renderSelectedDayDetails(day, habits){
   let html = `<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:12px;margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <div style="font-size:.75rem;font-weight:600;color:var(--tx2);">${dateLabel}</div>
-      <div style="font-size:.65rem;color:var(--green);font-weight:600;">${dayData.doneHabits.length}/${habits.length} habits done</div>
+      <div style="font-size:.65rem;color:var(--green);font-weight:600;">${dayData.doneHabits.length}/${dayData.totalHabits} habits done</div>
     </div>
     
     <!-- Habit Group Progress Bars -->
@@ -2794,8 +2831,44 @@ function renderSelectedDayDetails(day, habits){
       <div class="pb" style="height:5px;margin:0;"><div class="pf" style="width:${Math.min(tasksPct,100)}%;background:${tasksColor};"></div></div>
     </div>` : ''}`;
   
-  // Only show skipped and missed for past days (not today)
+  // Only show sections for past days (not today)
   const isToday = day === today();
+  
+  // Done section with undo buttons (for past days)
+  if(!isToday && dayData.doneHabits.length > 0){
+    html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:8px;">
+      <div style="font-size:.65rem;font-weight:600;color:var(--green);margin-bottom:5px;">✓ Done (${dayData.doneHabits.length})</div>`;
+    dayData.doneHabits.forEach(h => {
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+        <div style="flex:1;font-size:.72rem;color:var(--green);">${h.name}</div>
+        <button onclick="undoHabitForDay('${h.id}','${day}')" style="font-size:.6rem;color:var(--tx3);padding:3px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--bdr);">Undo</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  
+  // Opted out section (habits manually marked as not required after the fact)
+  if(!isToday && dayData.optedOutHabits.length > 0){
+    html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:8px;">
+      <div style="font-size:.65rem;font-weight:600;color:var(--teal);margin-bottom:5px;">○ Not required (${dayData.optedOutHabits.length})</div>`;
+    dayData.optedOutHabits.forEach(h => {
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+        <div style="flex:1;font-size:.72rem;color:var(--teal);opacity:.8;">${h.name}</div>
+        <button onclick="redoHabitForDay('${h.id}','${day}')" style="font-size:.6rem;color:var(--teal);padding:3px 8px;border-radius:4px;background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.2);">Mark done</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  
+  // "Not today" section (non-daily habits that were planned as not today)
+  if(!isToday && dayData.notTodayHabits.length > 0){
+    html += `<div style="border-top:1px solid var(--bdr);padding-top:8px;margin-bottom:8px;">
+      <div style="font-size:.65rem;font-weight:600;color:var(--tx3);margin-bottom:5px;">○ Not planned (${dayData.notTodayHabits.length})</div>`;
+    dayData.notTodayHabits.forEach(h => {
+      html += `<div style="font-size:.72rem;color:var(--tx3);padding:3px 0;opacity:.7;">${h.name}</div>`;
+    });
+    html += `</div>`;
+  }
   
   // Skipped section (only for past days)
   if(!isToday && dayData.skippedHabits.length > 0){
