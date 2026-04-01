@@ -370,9 +370,9 @@ select.inp{appearance:none;}
     <div class="sg3" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
       <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0</div><div class="slb">Tasks</div></div>
-      <div class="stile" onclick="openDueDateEditor()" style="cursor:pointer;">
-        <div class="sv" id="hwleft" style="color:var(--a2);font-size:.62rem;font-weight:700;line-height:1.3;">—</div>
-        <div class="slb">Left</div>
+      <div class="stile" onclick="scrollToWeeklyGoals()" style="cursor:pointer;">
+        <div class="sv" id="hweekly" style="color:var(--a2)">0/0</div>
+        <div class="slb">Weekly</div>
       </div>
     </div>
   </div>
@@ -394,6 +394,9 @@ select.inp{appearance:none;}
 
   <!-- Plan your day section (for non-daily habits) -->
   <div id="plan-day-section"></div>
+
+  <!-- Weekly Goals Section -->
+  <div id="weekly-goals-section"></div>
 
   <!-- Today's habits label -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:8px;">
@@ -651,6 +654,7 @@ def('plannedHabits',{}); // {date: {habitId: 'yes'|'nottoday'}} — planning dec
 def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'unlocked'|'claimed',progress:{},unlockedAt,claimedAt,createdAt}]
 def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit groups in daily view
 def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in sequence mode
+def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt}]}
 
 const APP_VERSION = 'v40';
 
@@ -669,7 +673,13 @@ function curWk(){
 }
 function wkKey(){ return 'w'+curWk(); }
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
-function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+function closeModal(id){ 
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('open');
+  // Remove dynamic modals from DOM
+  if(id === 'dyn-modal') setTimeout(() => el.remove(), 200);
+}
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 
 // ── COLOUR HELPERS ────────────────────────────────────────────────────────
@@ -815,6 +825,7 @@ function buildDailyView(){
   updateTopbarRight();
   updateWksLeftTile();
   buildPlanDaySection();
+  buildWeeklyGoalsSection();
   buildDailyHabits();
   buildDailyTasks();
   buildEodSection();
@@ -1240,6 +1251,404 @@ function planHabit(habId, decision){
   updateRing();
   updateHeroStats();
   updateCompleteDayBtn();
+}
+
+// ── WEEKLY GOALS ─────────────────────────────────────────────────────────────
+
+function getWeekKey(date){
+  // Get the Monday of the week for the given date
+  const d = new Date(date + 'T12:00:00');
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+  const monday = new Date(d.setDate(diff));
+  return monday.toISOString().split('T')[0];
+}
+
+function getCurrentWeekKey(){
+  return getWeekKey(today());
+}
+
+function getWeeklyGoals(weekKey){
+  if(!S.weeklyGoals) S.weeklyGoals = {};
+  if(!S.weeklyGoals[weekKey]) S.weeklyGoals[weekKey] = [];
+  return S.weeklyGoals[weekKey];
+}
+
+function getWeeklyGoalTarget(wg){
+  // Get the actual goal/project/task object
+  if(wg.type === 'goal') return S.goals.find(g => g.id === wg.targetId);
+  if(wg.type === 'project') return S.projects.find(p => p.id === wg.targetId);
+  if(wg.type === 'task') return S.tasks.find(t => t.id === wg.targetId);
+  return null;
+}
+
+function getWeeklyGoalName(wg){
+  const target = getWeeklyGoalTarget(wg);
+  return target ? target.name : '(Deleted)';
+}
+
+function getWeeklyGoalColor(wg){
+  const target = getWeeklyGoalTarget(wg);
+  if(!target) return 'var(--tx3)';
+  if(wg.type === 'goal') return AREA_COLORS[target.area] || 'var(--a)';
+  if(wg.type === 'project'){
+    const goal = S.goals.find(g => g.id === target.goalId);
+    return goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+  }
+  if(wg.type === 'task'){
+    if(target.projId){
+      const proj = S.projects.find(p => p.id === target.projId);
+      if(proj){
+        const goal = S.goals.find(g => g.id === proj.goalId);
+        return goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+      }
+    }
+    if(target.goalId){
+      const goal = S.goals.find(g => g.id === target.goalId);
+      return goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+    }
+  }
+  return 'var(--a)';
+}
+
+function isEndOfWeek(){
+  const d = new Date();
+  return d.getDay() === 0; // Sunday
+}
+
+function isStartOfWeek(){
+  const d = new Date();
+  return d.getDay() === 1; // Monday
+}
+
+function buildWeeklyGoalsSection(){
+  const el = document.getElementById('weekly-goals-section'); if(!el) return;
+  const weekKey = getCurrentWeekKey();
+  const goals = getWeeklyGoals(weekKey);
+  
+  // Calculate stats
+  const total = goals.length;
+  const completed = goals.filter(g => g.status === 'completed').length;
+  const active = goals.filter(g => g.status === 'active').length;
+  
+  // Update KPI
+  const kpi = document.getElementById('hweekly');
+  if(kpi) kpi.textContent = `${completed}/${total}`;
+  
+  // Format week range
+  const weekStart = new Date(weekKey + 'T12:00:00');
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekLabel = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`;
+  
+  // Check if we need to show prompts
+  const showEndOfWeekPrompt = isEndOfWeek() && active > 0;
+  const showStartOfWeekPrompt = isStartOfWeek() && total === 0;
+  
+  const bodyId = 'weekly-goals-body';
+  
+  let html = `<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:14px;">
+    <div onclick="toggleSection('${bodyId}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:1rem;">🎯</span>
+        <div>
+          <div style="font-size:.82rem;font-weight:700;color:var(--tx);">This Week's Focus</div>
+          <div style="font-size:.65rem;color:var(--tx3);">${weekLabel}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:.72rem;font-weight:700;color:${completed===total && total>0?'var(--green)':'var(--a2)'}">${completed}/${total}</span>
+        <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+      </div>
+    </div>
+    <div id="${bodyId}" style="display:none;padding:0 12px 12px;">`;
+  
+  // Add button at top of expanded section
+  html += `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+    <button onclick="event.stopPropagation();openAddWeeklyGoal()" style="font-size:.65rem;color:var(--a);padding:4px 10px;border-radius:99px;background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.2);">+ Add Goal</button>
+  </div>`;
+  
+  // Show prompt for start of week
+  if(showStartOfWeekPrompt){
+    html += `<div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:var(--r2);padding:12px;text-align:center;margin-bottom:10px;">
+      <div style="font-size:.85rem;margin-bottom:6px;">📅 New week started!</div>
+      <div style="font-size:.72rem;color:var(--tx3);margin-bottom:10px;">Set your focus for this week</div>
+      <button onclick="event.stopPropagation();openAddWeeklyGoal()" class="btn btp" style="font-size:.75rem;">+ Add Weekly Goal</button>
+    </div>`;
+  }
+  
+  // Show end of week review prompt
+  if(showEndOfWeekPrompt){
+    html += `<div style="background:rgba(232,98,42,.06);border:1px solid rgba(232,98,42,.15);border-radius:var(--r2);padding:12px;margin-bottom:10px;text-align:center;">
+      <div style="font-size:.85rem;margin-bottom:4px;">📊 Week ending!</div>
+      <div style="font-size:.72rem;color:var(--tx3);">Review your weekly goals below and mark them as completed or move to next week.</div>
+    </div>`;
+  }
+  
+  // Render goals list
+  if(goals.length > 0){
+    goals.forEach(wg => {
+      const name = getWeeklyGoalName(wg);
+      const color = getWeeklyGoalColor(wg);
+      const typeLabel = wg.type.charAt(0).toUpperCase() + wg.type.slice(1);
+      const isCompleted = wg.status === 'completed';
+      const isNotCompleted = wg.status === 'notcompleted';
+      const isMoved = wg.status === 'moved';
+      
+      let statusIcon = '';
+      let statusStyle = '';
+      if(isCompleted){
+        statusIcon = '✓';
+        statusStyle = 'color:var(--green);text-decoration:line-through;opacity:.7;';
+      } else if(isNotCompleted){
+        statusIcon = '✗';
+        statusStyle = 'color:var(--red);text-decoration:line-through;opacity:.6;';
+      } else if(isMoved){
+        statusIcon = '→';
+        statusStyle = 'color:var(--blue);opacity:.7;';
+      }
+      
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:6px;${statusStyle}">
+        <div style="width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${statusIcon ? statusIcon + ' ' : ''}${name}</div>
+          <div style="font-size:.62rem;color:var(--tx3);">${typeLabel}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          ${wg.status === 'active' ? `
+            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','completed')" title="Complete" style="font-size:.7rem;padding:5px 8px;border-radius:6px;background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);">✓</button>
+            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','notcompleted')" title="Not completed" style="font-size:.7rem;padding:5px 8px;border-radius:6px;background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.15);">✗</button>
+            <button onclick="event.stopPropagation();moveWeeklyGoalToNextWeek('${wg.id}')" title="Move to next week" style="font-size:.7rem;padding:5px 8px;border-radius:6px;background:rgba(59,130,246,.08);color:var(--blue);border:1px solid rgba(59,130,246,.15);">→</button>
+          ` : `
+            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','active')" title="Reactivate" style="font-size:.65rem;padding:4px 8px;border-radius:6px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);">↺</button>
+          `}
+          <button onclick="event.stopPropagation();removeWeeklyGoal('${wg.id}')" title="Remove" style="font-size:.65rem;padding:4px 8px;border-radius:6px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);">×</button>
+        </div>
+      </div>`;
+    });
+  } else if(!showStartOfWeekPrompt){
+    html += `<div style="text-align:center;padding:15px;color:var(--tx3);font-size:.75rem;">
+      No weekly goals set. Tap "+ Add Goal" to set your focus for this week.
+    </div>`;
+  }
+  
+  html += `</div></div>`;
+  el.innerHTML = html;
+}
+
+function openAddWeeklyGoal(){
+  // Build picker with goals, projects, and tasks
+  const goals = S.goals.filter(g => !g.archived);
+  const projects = S.projects.filter(p => !p.archived && !p.done);
+  const tasks = S.tasks.filter(t => !t.archived && !t.done);
+  
+  const weekKey = getCurrentWeekKey();
+  const existingIds = getWeeklyGoals(weekKey).map(wg => wg.targetId);
+  
+  let html = `<div style="max-height:60vh;overflow-y:auto;">`;
+  
+  // Goals
+  if(goals.length > 0){
+    html += `<div style="font-size:.65rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;padding:8px 0 6px;">Goals</div>`;
+    goals.forEach(g => {
+      const added = existingIds.includes(g.id);
+      const col = AREA_COLORS[g.area] || 'var(--a)';
+      const clickAttr = added ? '' : `data-action="add" data-type="goal" data-id="${g.id}"`;
+      html += `<div ${clickAttr} class="${added ? '' : 'wg-picker-item'}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:${added?'default':'pointer'};opacity:${added?'.5':'1'};">
+        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <div style="flex:1;font-size:.8rem;">${g.name}</div>
+        ${added ? '<span style="font-size:.6rem;color:var(--green);">Added</span>' : ''}
+      </div>`;
+    });
+  }
+  
+  // Projects
+  if(projects.length > 0){
+    html += `<div style="font-size:.65rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;padding:12px 0 6px;">Projects</div>`;
+    projects.forEach(p => {
+      const added = existingIds.includes(p.id);
+      const goal = S.goals.find(g => g.id === p.goalId);
+      const col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+      const goalName = goal ? goal.name : '';
+      const clickAttr = added ? '' : `data-action="add" data-type="project" data-id="${p.id}"`;
+      html += `<div ${clickAttr} class="${added ? '' : 'wg-picker-item'}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:${added?'default':'pointer'};opacity:${added?'.5':'1'};">
+        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <div style="flex:1;">
+          <div style="font-size:.8rem;">${p.name}</div>
+          ${goalName ? `<div style="font-size:.62rem;color:var(--tx3);">${goalName}</div>` : ''}
+        </div>
+        ${added ? '<span style="font-size:.6rem;color:var(--green);">Added</span>' : ''}
+      </div>`;
+    });
+  }
+  
+  // Tasks (limit to 20 most recent/relevant)
+  if(tasks.length > 0){
+    const displayTasks = tasks.slice(0, 20);
+    html += `<div style="font-size:.65rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;padding:12px 0 6px;">Tasks</div>`;
+    displayTasks.forEach(t => {
+      const added = existingIds.includes(t.id);
+      let col = 'var(--teal)';
+      if(t.projId){
+        const proj = S.projects.find(p => p.id === t.projId);
+        if(proj){
+          const goal = S.goals.find(g => g.id === proj.goalId);
+          col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+        }
+      } else if(t.goalId){
+        const goal = S.goals.find(g => g.id === t.goalId);
+        col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+      }
+      const clickAttr = added ? '' : `data-action="add" data-type="task" data-id="${t.id}"`;
+      html += `<div ${clickAttr} class="${added ? '' : 'wg-picker-item'}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:${added?'default':'pointer'};opacity:${added?'.5':'1'};">
+        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+        <div style="flex:1;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</div>
+        ${added ? '<span style="font-size:.6rem;color:var(--green);">Added</span>' : ''}
+      </div>`;
+    });
+  }
+  
+  if(goals.length === 0 && projects.length === 0 && tasks.length === 0){
+    html += `<div style="text-align:center;padding:20px;color:var(--tx3);font-size:.8rem;">
+      No goals, projects, or tasks available. Create some in the Goals tab first.
+    </div>`;
+  }
+  
+  html += `</div>`;
+  
+  showModal('Add Weekly Goal', html, [{label:'Close', cls:'btgh'}]);
+  
+  // Wire click events after modal is created
+  setTimeout(() => {
+    document.querySelectorAll('.wg-picker-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const type = el.dataset.type;
+        const id = el.dataset.id;
+        if(type && id) addWeeklyGoal(type, id);
+      });
+    });
+  }, 50);
+}
+
+function addWeeklyGoal(type, targetId){
+  const weekKey = getCurrentWeekKey();
+  if(!S.weeklyGoals) S.weeklyGoals = {};
+  if(!S.weeklyGoals[weekKey]) S.weeklyGoals[weekKey] = [];
+  
+  // Check if already exists
+  if(S.weeklyGoals[weekKey].some(wg => wg.targetId === targetId)){
+    toast('Already added');
+    return;
+  }
+  
+  S.weeklyGoals[weekKey].push({
+    id: uid(),
+    type,
+    targetId,
+    status: 'active',
+    addedAt: today()
+  });
+  save();
+  
+  closeModal('dyn-modal');
+  buildWeeklyGoalsSection();
+  toast('Weekly goal added ✓');
+}
+
+function setWeeklyGoalStatus(wgId, status){
+  const weekKey = getCurrentWeekKey();
+  const goals = getWeeklyGoals(weekKey);
+  const wg = goals.find(g => g.id === wgId);
+  if(!wg) return;
+  
+  wg.status = status;
+  if(status === 'completed') wg.completedAt = today();
+  save();
+  
+  buildWeeklyGoalsSection();
+  
+  const labels = {completed: 'Completed ✓', notcompleted: 'Marked not completed', active: 'Reactivated'};
+  toast(labels[status] || 'Updated');
+}
+
+function moveWeeklyGoalToNextWeek(wgId){
+  const weekKey = getCurrentWeekKey();
+  const goals = getWeeklyGoals(weekKey);
+  const wg = goals.find(g => g.id === wgId);
+  if(!wg) return;
+  
+  // Mark as moved in current week
+  wg.status = 'moved';
+  
+  // Add to next week
+  const nextWeekDate = new Date(weekKey + 'T12:00:00');
+  nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+  const nextWeekKey = nextWeekDate.toISOString().split('T')[0];
+  
+  if(!S.weeklyGoals[nextWeekKey]) S.weeklyGoals[nextWeekKey] = [];
+  
+  // Check if already in next week
+  if(!S.weeklyGoals[nextWeekKey].some(g => g.targetId === wg.targetId)){
+    S.weeklyGoals[nextWeekKey].push({
+      id: uid(),
+      type: wg.type,
+      targetId: wg.targetId,
+      status: 'active',
+      addedAt: today(),
+      movedFrom: weekKey
+    });
+  }
+  
+  save();
+  buildWeeklyGoalsSection();
+  toast('Moved to next week →');
+}
+
+function removeWeeklyGoal(wgId){
+  const weekKey = getCurrentWeekKey();
+  if(!S.weeklyGoals || !S.weeklyGoals[weekKey]) return;
+  
+  S.weeklyGoals[weekKey] = S.weeklyGoals[weekKey].filter(g => g.id !== wgId);
+  save();
+  
+  buildWeeklyGoalsSection();
+  toast('Removed');
+}
+
+function scrollToWeeklyGoals(){
+  const el = document.getElementById('weekly-goals-section');
+  const body = document.getElementById('weekly-goals-body');
+  if(el) {
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+    // Open the section if closed
+    if(body && body.style.display === 'none'){
+      body.style.display = 'block';
+    }
+  }
+}
+
+function showModal(title, content, buttons){
+  // Remove existing dynamic modal if any
+  const existing = document.getElementById('dyn-modal');
+  if(existing) existing.remove();
+  
+  let btnHtml = buttons.map(b => {
+    const action = b.action || "closeModal('dyn-modal')";
+    return `<button class="btn ${b.cls||'btgh'}" onclick="${action}">${b.label}</button>`;
+  }).join('');
+  
+  const modal = document.createElement('div');
+  modal.id = 'dyn-modal';
+  modal.className = 'modal open';
+  modal.innerHTML = `<div class="mp">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:.95rem;font-weight:700;">${title}</div>
+      <button onclick="closeModal('dyn-modal')" style="font-size:1.2rem;color:var(--tx3);padding:2px 6px;">×</button>
+    </div>
+    ${content}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">${btnHtml}</div>
+  </div>`;
+  document.body.appendChild(modal);
 }
 
 function buildDailyHabits(){
