@@ -291,6 +291,24 @@ select.inp{appearance:none;}
 .done-item-undo{font-size:.65rem;color:var(--blue);padding:4px 10px;border-radius:6px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.15);}
 .heatmap-cell-interactive{user-select:none;}
 .heatmap-cell-interactive:active{transform:scale(0.9);}
+
+/* Restriction Override Styles */
+.override-card{background:linear-gradient(135deg,rgba(168,85,247,.08),rgba(168,85,247,.02));border:2px solid rgba(168,85,247,.3);border-radius:var(--r);padding:14px;margin-bottom:12px;}
+.override-active{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.02));border-color:rgba(34,197,94,.3);}
+.override-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;font-size:.7rem;font-weight:700;background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25);animation:pulse-green 2s infinite;}
+@keyframes pulse-green{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.3);}50%{box-shadow:0 0 0 6px rgba(34,197,94,0);}}
+
+/* Goals Filter Toggle Styles */
+.goals-filter-wrap{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.gf-btn{padding:7px 14px;border-radius:99px;font-size:.7rem;font-weight:600;background:var(--sur);color:var(--tx2);border:1px solid var(--bdr);transition:all .18s;cursor:pointer;}
+.gf-btn.on{background:var(--a);color:#fff;border-color:var(--a);box-shadow:0 2px 10px rgba(232,98,42,.25);}
+.gf-btn:active{transform:scale(.97);}
+
+/* Flat view cards */
+.flat-habit-card,.flat-project-card,.flat-goal-card{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:11px 13px;margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+.flat-habit-card{border-left:3px solid var(--green);}
+.flat-project-card{border-left:3px solid var(--blue);}
+.flat-goal-card{border-left:3px solid var(--a);}
 </style>
 </head>
 <body>
@@ -464,6 +482,14 @@ select.inp{appearance:none;}
   <!-- Summary strip -->
   <div id="goals-summary"></div>
 
+  <!-- Goals Filter Toggle -->
+  <div class="goals-filter-wrap" id="goals-filter-wrap">
+    <button class="gf-btn on" onclick="setGoalsFilter('all')">All</button>
+    <button class="gf-btn" onclick="setGoalsFilter('goals')">Goals</button>
+    <button class="gf-btn" onclick="setGoalsFilter('projects')">Projects</button>
+    <button class="gf-btn" onclick="setGoalsFilter('habits')">Habits</button>
+  </div>
+
   <!-- Goals + projects list -->
   <div id="goals-page-content"></div>
 
@@ -531,6 +557,11 @@ select.inp{appearance:none;}
 
   <!-- Prefs -->
   <div class="subpage" id="ssub-prefs">
+    
+    <!-- Restriction Override Section -->
+    <div class="sl">⏱️ Restriction Override</div>
+    <div id="override-section"></div>
+    
     <div class="sl">Reflection questions</div>
     <div style="font-size:.72rem;color:var(--tx2);margin-bottom:9px;line-height:1.5;">These appear at the bottom of your Daily tab. Toggle each one on when you want it to show up. Each one is answered before you complete the day.</div>
     <div id="eod-config-list"></div>
@@ -655,6 +686,8 @@ def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'acti
 def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit groups in daily view
 def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in sequence mode
 def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt}]}
+def('restrictionOverrideUntil',null); // ISO timestamp when override expires
+def('goalsFilterMode','all'); // 'all' | 'goals' | 'projects' | 'habits'
 
 const APP_VERSION = 'v40';
 
@@ -807,7 +840,7 @@ function switchSettingsTab(id,el){
   const scroller=document.querySelector('.scroll'); if(scroller) scroller.scrollTop=0;
   if(id==='workspace') buildWorkspace();
   if(id==='cycle')     buildCycleMgmt();
-  if(id==='prefs')     { buildEodConfig(); loadPrefValues(); }
+  if(id==='prefs')     { buildOverrideSection(); buildEodConfig(); loadPrefValues(); }
 }
 
 // ── DAILY ─────────────────────────────────────────────────────────────────
@@ -847,10 +880,100 @@ function getCommitmentData(date){
 
 // Check if editing is locked (committed + after 12 PM)
 function isEditingLocked(){
+  // Check if restriction override is active
+  if(isRestrictionOverrideActive()) return false;
+  
   if(!isCommittedToday()) return false;
   const now = new Date();
   const hour = now.getHours();
   return hour >= 12; // Locked after 12 PM (noon)
+}
+
+// Check if restriction override is currently active
+function isRestrictionOverrideActive(){
+  if(!S.restrictionOverrideUntil) return false;
+  const now = new Date();
+  const expiry = new Date(S.restrictionOverrideUntil);
+  return now < expiry;
+}
+
+// Get remaining time on override in minutes
+function getOverrideRemainingMinutes(){
+  if(!S.restrictionOverrideUntil) return 0;
+  const now = new Date();
+  const expiry = new Date(S.restrictionOverrideUntil);
+  const diff = expiry - now;
+  return diff > 0 ? Math.ceil(diff / 60000) : 0;
+}
+
+// Activate restriction override for 1 hour
+function activateRestrictionOverride(){
+  const expiry = new Date();
+  expiry.setHours(expiry.getHours() + 1);
+  S.restrictionOverrideUntil = expiry.toISOString();
+  save();
+  toast('Override active for 1 hour ⏱️');
+  buildOverrideSection();
+  buildDailyView();
+}
+
+// Deactivate restriction override
+function deactivateRestrictionOverride(){
+  S.restrictionOverrideUntil = null;
+  save();
+  toast('Override deactivated');
+  buildOverrideSection();
+  buildDailyView();
+}
+
+// Build the override section UI in Settings
+function buildOverrideSection(){
+  const el = document.getElementById('override-section'); if(!el) return;
+  const isActive = isRestrictionOverrideActive();
+  const remaining = getOverrideRemainingMinutes();
+  
+  if(isActive){
+    const mins = remaining;
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    const timeStr = hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`;
+    
+    el.innerHTML = `<div class="override-card override-active">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="font-size:1.4rem;">🔓</span>
+        <div style="flex:1;">
+          <div style="font-size:.85rem;font-weight:700;color:var(--green);">Override Active</div>
+          <div style="font-size:.68rem;color:var(--tx3);">Editing restrictions temporarily disabled</div>
+        </div>
+        <div class="override-badge">⏱️ ${timeStr} left</div>
+      </div>
+      <div style="font-size:.72rem;color:var(--tx2);line-height:1.5;margin-bottom:12px;">
+        You can edit habits, tasks, and goals freely until the override expires.
+      </div>
+      <button onclick="deactivateRestrictionOverride()" class="btn btr bfu">Deactivate Override</button>
+    </div>`;
+  } else {
+    el.innerHTML = `<div class="override-card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="font-size:1.4rem;">🔒</span>
+        <div>
+          <div style="font-size:.85rem;font-weight:700;color:var(--purple);">Temporary Override</div>
+          <div style="font-size:.68rem;color:var(--tx3);">Bypass editing restrictions for 1 hour</div>
+        </div>
+      </div>
+      <div style="font-size:.72rem;color:var(--tx2);line-height:1.5;margin-bottom:12px;">
+        After committing to your day, editing is normally locked after 12 PM to protect your commitments. 
+        Use this override when you need to make changes outside normal hours.
+      </div>
+      <div style="background:rgba(232,98,42,.06);border:1px solid rgba(232,98,42,.15);border-radius:var(--r2);padding:10px;margin-bottom:12px;">
+        <div style="font-size:.68rem;color:var(--a);font-weight:600;margin-bottom:4px;">⚠️ Use sparingly</div>
+        <div style="font-size:.65rem;color:var(--tx3);line-height:1.5;">
+          The restriction exists to help you stay committed. Override only when truly necessary.
+        </div>
+      </div>
+      <button onclick="activateRestrictionOverride()" class="btn btp bfu">🔓 Activate Override (1 Hour)</button>
+    </div>`;
+  }
 }
 
 // Check if a specific task is committed today
@@ -3710,26 +3833,61 @@ function buildTrackerHistory(){
 
 
 // ── GOALS PAGE ────────────────────────────────────────────────────────────
+let goalsFilterMode = 'all'; // 'all' | 'goals' | 'projects' | 'habits'
+
+function setGoalsFilter(mode){
+  goalsFilterMode = mode;
+  // Update button states
+  document.querySelectorAll('.gf-btn').forEach(btn => btn.classList.remove('on'));
+  const activeBtn = document.querySelector(`.gf-btn[onclick="setGoalsFilter('${mode}')"]`);
+  if(activeBtn) activeBtn.classList.add('on');
+  // Rebuild content
+  buildGoalsContent();
+}
+
 function buildGoalsPage(){
   buildGoalsSummary();
+  updateGoalsFilterButtons();
   buildGoalsContent();
+}
+
+function updateGoalsFilterButtons(){
+  document.querySelectorAll('.gf-btn').forEach(btn => {
+    btn.classList.remove('on');
+    if(btn.getAttribute('onclick')?.includes(`'${goalsFilterMode}'`)){
+      btn.classList.add('on');
+    }
+  });
 }
 
 function buildGoalsSummary(){
   const el = document.getElementById('goals-summary'); if(!el) return;
   const goals   = S.goals.filter(g=>!g.archived);
   const projs   = S.projects.filter(p=>!p.archived);
+  const habits  = S.habits.filter(h=>!h.archived);
   const active  = projs.filter(p=>p.status==='active').length;
   const complete= projs.filter(p=>p.status==='complete').length;
-  el.innerHTML=`<div class="sg3" style="margin-bottom:14px;">
+  el.innerHTML=`<div class="sg4" style="margin-bottom:14px;">
     <div class="stile"><div class="sv" style="color:var(--a);">${goals.length}</div><div class="slb">Goals</div></div>
-    <div class="stile"><div class="sv" style="color:var(--blue);">${active}</div><div class="slb">Active</div></div>
-    <div class="stile"><div class="sv" style="color:var(--green);">${complete}</div><div class="slb">Complete</div></div>
+    <div class="stile"><div class="sv" style="color:var(--blue);">${projs.length}</div><div class="slb">Projects</div></div>
+    <div class="stile"><div class="sv" style="color:var(--green);">${habits.length}</div><div class="slb">Habits</div></div>
+    <div class="stile"><div class="sv" style="color:var(--teal);">${complete}</div><div class="slb">Done</div></div>
   </div>`;
 }
 
 function buildGoalsContent(){
   const el = document.getElementById('goals-page-content'); if(!el) return;
+  
+  // Route to appropriate view based on filter mode
+  if(goalsFilterMode === 'goals') return buildGoalsOnlyView(el);
+  if(goalsFilterMode === 'projects') return buildProjectsOnlyView(el);
+  if(goalsFilterMode === 'habits') return buildHabitsOnlyView(el);
+  
+  // Default: All view (hierarchical)
+  buildGoalsAllView(el);
+}
+
+function buildGoalsAllView(el){
   const allGoals = S.goals.filter(g=>!g.archived);
   const activeGoals = allGoals.filter(g=>!g.future);
   const futureGoals = allGoals.filter(g=>g.future);
@@ -3810,6 +3968,230 @@ function buildGoalsContent(){
   
   // Wire swipe gestures for goals
   wireSwipeGestures();
+}
+
+// Goals Only View - flat list of goals
+function buildGoalsOnlyView(el){
+  const goals = S.goals.filter(g=>!g.archived);
+  const activeGoals = goals.filter(g=>!g.future);
+  const futureGoals = goals.filter(g=>g.future);
+  
+  if(!goals.length){
+    el.innerHTML=`<div style="text-align:center;padding:40px 0;">
+      <div style="font-size:2rem;margin-bottom:10px;">🎯</div>
+      <div style="font-size:.85rem;color:var(--tx2);font-weight:600;">No goals yet</div>
+    </div>`;
+    return;
+  }
+  
+  let html = `<div class="sl">All Goals (${goals.length})</div>`;
+  
+  // Active goals
+  activeGoals.forEach(g => {
+    const col = AREA_COLORS[g.area]||'var(--a)';
+    const emoji = AREA_EMOJIS[g.area]||'✨';
+    const projs = S.projects.filter(p=>p.goalId===g.id&&!p.archived);
+    const habits = S.habits.filter(h=>h.goalId===g.id&&!h.archived);
+    const done = projs.filter(p=>p.status==='complete').length;
+    
+    html += `<div class="flat-goal-card" style="border-left-color:${col};">
+      <span style="font-size:1.1rem;">${emoji}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:.88rem;font-weight:700;">${g.name}</div>
+        <div style="font-size:.65rem;color:var(--tx3);margin-top:2px;">
+          ${g.area} · ${projs.length} project${projs.length!==1?'s':''} · ${habits.length} habit${habits.length!==1?'s':''}
+          ${projs.length ? ` · <span style="color:var(--green)">${done}/${projs.length} done</span>` : ''}
+        </div>
+      </div>
+      <button onclick="openGoalEdit('${g.id}')" class="btn btsm btgh">Edit</button>
+    </div>`;
+  });
+  
+  // Future goals
+  if(futureGoals.length){
+    html += `<div class="sl" style="margin-top:12px;">🕐 Future Goals (${futureGoals.length})</div>`;
+    futureGoals.forEach(g => {
+      const col = AREA_COLORS[g.area]||'var(--a)';
+      const emoji = AREA_EMOJIS[g.area]||'✨';
+      html += `<div class="flat-goal-card" style="border-left-color:${col};opacity:.7;">
+        <span style="font-size:1.1rem;">${emoji}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.88rem;font-weight:700;color:var(--tx2);">${g.name}</div>
+          <div style="font-size:.65rem;color:var(--tx3);margin-top:2px;">${g.area} · Waiting to activate</div>
+        </div>
+        <button onclick="activateGoal('${g.id}')" class="btn btsm btg">Activate</button>
+        <button onclick="openGoalEdit('${g.id}')" class="btn btsm btgh">Edit</button>
+      </div>`;
+    });
+  }
+  
+  el.innerHTML = html;
+}
+
+// Projects Only View - flat list of projects
+function buildProjectsOnlyView(el){
+  const projs = S.projects.filter(p=>!p.archived);
+  const active = projs.filter(p=>p.status==='active');
+  const complete = projs.filter(p=>p.status==='complete');
+  const abandoned = projs.filter(p=>p.status==='abandoned');
+  
+  if(!projs.length){
+    el.innerHTML=`<div style="text-align:center;padding:40px 0;">
+      <div style="font-size:2rem;margin-bottom:10px;">📁</div>
+      <div style="font-size:.85rem;color:var(--tx2);font-weight:600;">No projects yet</div>
+    </div>`;
+    return;
+  }
+  
+  let html = `<div class="sl">All Projects (${projs.length})</div>`;
+  
+  // Active projects
+  if(active.length){
+    html += `<div style="font-size:.68rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 8px;">Active (${active.length})</div>`;
+    active.forEach(p => {
+      const col = projectColor(p);
+      const goal = p.goalId ? S.goals.find(g=>g.id===p.goalId) : null;
+      const habits = S.habits.filter(h=>h.projId===p.id&&!h.archived);
+      const tasks = S.tasks.filter(t=>t.projId===p.id&&!t.archived&&!t.done);
+      
+      html += `<div class="flat-project-card" style="border-left-color:${col};">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.88rem;font-weight:700;">${p.name}</div>
+          <div style="font-size:.65rem;color:var(--tx3);margin-top:2px;">
+            ${goal ? goal.name : 'No goal'} · ${habits.length} habit${habits.length!==1?'s':''} · ${tasks.length} open task${tasks.length!==1?'s':''}
+            ${p.deadline ? ` · Due ${p.deadline}` : ''}
+          </div>
+        </div>
+        <button onclick="markProjComplete('${p.id}');buildGoalsPage()" class="btn btsm btg">Done</button>
+        <button onclick="openProjectEdit('${p.id}')" class="btn btsm btgh">Edit</button>
+      </div>`;
+    });
+  }
+  
+  // Complete projects (collapsed)
+  if(complete.length){
+    html += `<div onclick="toggleSection('complete-projs-list')" style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;padding:8px 12px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:var(--r2);">
+      <span style="font-size:.7rem;color:var(--tx3);">▶</span>
+      <span style="font-size:.78rem;font-weight:600;color:var(--green);flex:1;">✓ Completed (${complete.length})</span>
+    </div>
+    <div id="complete-projs-list" style="display:none;margin-top:6px;">`;
+    complete.forEach(p => {
+      html += `<div class="flat-project-card" style="border-left-color:var(--green);opacity:.7;">
+        <div style="flex:1;font-size:.82rem;color:var(--tx2);text-decoration:line-through;">${p.name}</div>
+        <button onclick="openProjectEdit('${p.id}')" class="btn btsm btgh">Edit</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  
+  // Abandoned projects (collapsed)
+  if(abandoned.length){
+    html += `<div onclick="toggleSection('abandoned-projs-list')" style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;padding:8px 12px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.12);border-radius:var(--r2);">
+      <span style="font-size:.7rem;color:var(--tx3);">▶</span>
+      <span style="font-size:.78rem;font-weight:600;color:var(--red);flex:1;">✗ Abandoned (${abandoned.length})</span>
+    </div>
+    <div id="abandoned-projs-list" style="display:none;margin-top:6px;">`;
+    abandoned.forEach(p => {
+      html += `<div class="flat-project-card" style="border-left-color:var(--red);opacity:.6;">
+        <div style="flex:1;font-size:.82rem;color:var(--tx3);text-decoration:line-through;">${p.name}</div>
+        <button onclick="openProjectEdit('${p.id}')" class="btn btsm btgh">Edit</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  
+  el.innerHTML = html;
+}
+
+// Habits Only View - flat list of habits
+function buildHabitsOnlyView(el){
+  const habits = S.habits.filter(h=>!h.archived);
+  
+  if(!habits.length){
+    el.innerHTML=`<div style="text-align:center;padding:40px 0;">
+      <div style="font-size:2rem;margin-bottom:10px;">💪</div>
+      <div style="font-size:.85rem;color:var(--tx2);font-weight:600;">No habits yet</div>
+    </div>`;
+    return;
+  }
+  
+  // Group by goal
+  const byGoal = {};
+  const noGoal = [];
+  
+  habits.forEach(h => {
+    const goalId = h.goalId || (h.projId ? S.projects.find(p=>p.id===h.projId)?.goalId : null);
+    if(goalId){
+      if(!byGoal[goalId]) byGoal[goalId] = [];
+      byGoal[goalId].push(h);
+    } else {
+      noGoal.push(h);
+    }
+  });
+  
+  let html = `<div class="sl">All Habits (${habits.length})</div>`;
+  
+  // Habits by goal
+  Object.keys(byGoal).forEach(goalId => {
+    const goal = S.goals.find(g=>g.id===goalId);
+    const col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
+    const emoji = goal ? AREA_EMOJIS[goal.area] || '✨' : '✨';
+    const goalHabits = byGoal[goalId];
+    
+    html += `<div style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;">
+        <span style="font-size:.85rem;">${emoji}</span>
+        <div style="font-size:.75rem;font-weight:700;color:${col};">${goal?.name || 'Unknown Goal'}</div>
+        <span style="font-size:.62rem;color:var(--tx3);">${goalHabits.length}</span>
+      </div>`;
+    
+    goalHabits.forEach(h => {
+      const hcol = habitColor(h);
+      const proj = h.projId ? S.projects.find(p=>p.id===h.projId) : null;
+      const freq = h.targetDays === 7 ? 'Daily' : h.targetDays + '×/week';
+      
+      html += `<div class="flat-habit-card" style="border-left-color:${hcol};">
+        <div style="width:6px;height:6px;border-radius:50%;background:${hcol};flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.85rem;font-weight:600;">${h.name}</div>
+          <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">
+            ${freq}${proj ? ' · ' + proj.name : ''}
+          </div>
+        </div>
+        <button onclick="openHabitEdit('${h.id}')" class="btn btsm btgh">Edit</button>
+      </div>`;
+    });
+    
+    html += `</div>`;
+  });
+  
+  // Standalone habits (no goal)
+  if(noGoal.length){
+    html += `<div style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;">
+        <span style="font-size:.85rem;">📦</span>
+        <div style="font-size:.75rem;font-weight:700;color:var(--tx2);">Standalone</div>
+        <span style="font-size:.62rem;color:var(--tx3);">${noGoal.length}</span>
+      </div>`;
+    
+    noGoal.forEach(h => {
+      const hcol = habitColor(h);
+      const freq = h.targetDays === 7 ? 'Daily' : h.targetDays + '×/week';
+      
+      html += `<div class="flat-habit-card" style="border-left-color:${hcol};">
+        <div style="width:6px;height:6px;border-radius:50%;background:${hcol};flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.85rem;font-weight:600;">${h.name}</div>
+          <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${freq}</div>
+        </div>
+        <button onclick="openHabitEdit('${h.id}')" class="btn btsm btgh">Edit</button>
+      </div>`;
+    });
+    
+    html += `</div>`;
+  }
+  
+  el.innerHTML = html;
 }
 
 function renderGoalCard(g){
