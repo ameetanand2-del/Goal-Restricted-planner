@@ -309,6 +309,24 @@ select.inp{appearance:none;}
 .flat-habit-card{border-left:3px solid var(--green);}
 .flat-project-card{border-left:3px solid var(--blue);}
 .flat-goal-card{border-left:3px solid var(--a);}
+
+/* Weekly goal swipe containers */
+.wg-swipe{position:relative;overflow:hidden;border-radius:var(--r2);margin-bottom:6px;}
+.wg-swipe .wg-swipe-content{position:relative;background:var(--bg);transition:transform .25s ease;z-index:2;padding:10px 12px;}
+.wg-swipe .wg-swipe-actions{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;gap:6px;padding:0 10px;z-index:1;opacity:0;transition:opacity .15s ease;background:var(--sur);}
+.wg-swipe.swiped .wg-swipe-actions{opacity:1;}
+.wg-swipe.swiped .wg-swipe-content{transform:translateX(-180px);}
+
+/* Weekly goal text - allow 2.5 lines */
+.wg-name{font-size:.8rem;font-weight:600;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35;}
+
+/* Tracker expandable habit name */
+.tracker-habit-name{font-size:.72rem;padding:2px 10px 2px 0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:110px;cursor:pointer;transition:all .2s;line-height:1.3;}
+.tracker-habit-name.expanded{-webkit-line-clamp:unset;white-space:normal;max-width:140px;}
+
+/* Milestone badge */
+.milestone-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:.58rem;font-weight:700;background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.2);}
+.milestone-note{background:rgba(168,85,247,.05);border:1px solid rgba(168,85,247,.15);border-radius:var(--r2);padding:10px;margin-top:8px;font-size:.72rem;color:var(--tx2);line-height:1.5;}
 </style>
 </head>
 <body>
@@ -499,20 +517,27 @@ select.inp{appearance:none;}
 <div class="page" id="page-rewards"><div class="pi">
 
   <!-- KPI strip -->
-  <div class="sg3" style="margin-bottom:14px;">
+  <div class="sg4" style="margin-bottom:14px;">
     <div class="stile"><div class="sv" id="rewards-active" style="color:var(--blue)">0</div><div class="slb">Active</div></div>
     <div class="stile"><div class="sv" id="rewards-unlocked" style="color:var(--green)">0</div><div class="slb">Unlocked</div></div>
     <div class="stile"><div class="sv" id="rewards-claimed" style="color:var(--a)">0</div><div class="slb">Claimed</div></div>
+    <div class="stile"><div class="sv" id="rewards-milestones" style="color:var(--purple)">0</div><div class="slb">Milestones</div></div>
   </div>
 
   <!-- Rewards list -->
   <div id="rewards-list"></div>
 
+  <!-- Milestones list -->
+  <div id="milestones-list"></div>
+
   <!-- Claimed history -->
   <div id="rewards-history"></div>
 
-  <!-- Add reward button -->
-  <button onclick="openAddReward()" class="btn btp bfu" style="margin-top:16px;">+ Add Reward</button>
+  <!-- Add reward / milestone buttons -->
+  <div style="display:flex;gap:8px;margin-top:16px;">
+    <button onclick="openAddReward()" class="btn btp" style="flex:1;">+ Reward</button>
+    <button onclick="openAddMilestone()" class="btn" style="flex:1;background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.25);">🏁 Milestone</button>
+  </div>
 
 </div></div>
 
@@ -683,6 +708,7 @@ def('dailyTaskOrder',[]); // [taskId, taskId, ...] — persistent task order in 
 def('dailyTaskGroupOrder',[]); // [groupKey, groupKey, ...] — order of task groups in daily view
 def('plannedHabits',{}); // {date: {habitId: 'yes'|'nottoday'}} — planning decisions for non-daily habits
 def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'unlocked'|'claimed',progress:{},unlockedAt,claimedAt,createdAt}]
+def('milestones',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'reached'|'acknowledged',note,reachedAt,acknowledgedAt,createdAt}]
 def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit groups in daily view
 def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in sequence mode
 def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt}]}
@@ -848,6 +874,16 @@ function buildDailyView(){
   const now = new Date();
   document.getElementById('h-date').textContent =
     now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+
+  // Sync grouping toggle labels with persisted state
+  const hIcon = document.getElementById('daily-habit-group-icon');
+  const hLabel = document.getElementById('daily-habit-group-label');
+  if(hIcon) hIcon.textContent = dailyHabitGrouped ? '▤' : '▥';
+  if(hLabel) hLabel.textContent = dailyHabitGrouped ? 'Grouped' : 'Sequence';
+  const tIcon = document.getElementById('daily-task-group-icon');
+  const tLabel = document.getElementById('daily-task-group-label');
+  if(tIcon) tIcon.textContent = dailyTaskGrouped ? '▤' : '▥';
+  if(tLabel) tLabel.textContent = dailyTaskGrouped ? 'Grouped' : 'Sequence';
 
   // Check for overcommitment warning
   checkOvercommitmentWarning();
@@ -1520,32 +1556,40 @@ function buildWeeklyGoalsSection(){
       
       let statusIcon = '';
       let statusStyle = '';
+      let statusBorder = 'var(--bdr)';
       if(isCompleted){
-        statusIcon = '✓';
-        statusStyle = 'color:var(--green);text-decoration:line-through;opacity:.7;';
+        statusIcon = '✓ ';
+        statusStyle = 'color:var(--green);opacity:.8;';
+        statusBorder = 'rgba(34,197,94,.25)';
       } else if(isNotCompleted){
-        statusIcon = '✗';
+        statusIcon = '✗ ';
         statusStyle = 'color:var(--red);text-decoration:line-through;opacity:.6;';
+        statusBorder = 'rgba(239,68,68,.2)';
       } else if(isMoved){
-        statusIcon = '→';
+        statusIcon = '→ ';
         statusStyle = 'color:var(--blue);opacity:.7;';
+        statusBorder = 'rgba(59,130,246,.2)';
       }
       
-      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:6px;${statusStyle}">
-        <div style="width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0;"></div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${statusIcon ? statusIcon + ' ' : ''}${name}</div>
-          <div style="font-size:.62rem;color:var(--tx3);">${typeLabel}</div>
-        </div>
-        <div style="display:flex;gap:4px;flex-shrink:0;">
+      html += `<div class="wg-swipe" data-wgid="${wg.id}">
+        <div class="wg-swipe-actions">
           ${wg.status === 'active' ? `
-            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','completed')" title="Complete" style="font-size:.7rem;padding:5px 8px;border-radius:6px;background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);">✓</button>
-            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','notcompleted')" title="Not completed" style="font-size:.7rem;padding:5px 8px;border-radius:6px;background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.15);">✗</button>
-            <button onclick="event.stopPropagation();moveWeeklyGoalToNextWeek('${wg.id}')" title="Move to next week" style="font-size:.7rem;padding:5px 8px;border-radius:6px;background:rgba(59,130,246,.08);color:var(--blue);border:1px solid rgba(59,130,246,.15);">→</button>
+            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','completed');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);font-size:.68rem;font-weight:600;white-space:nowrap;">✓ Done</button>
+            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','notcompleted');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18);font-size:.68rem;font-weight:600;white-space:nowrap;">✗ Cancel</button>
+            <button onclick="event.stopPropagation();moveWeeklyGoalToNextWeek('${wg.id}');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(59,130,246,.08);color:var(--blue);border:1px solid rgba(59,130,246,.18);font-size:.68rem;font-weight:600;white-space:nowrap;">→ Move</button>
           ` : `
-            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','active')" title="Reactivate" style="font-size:.65rem;padding:4px 8px;border-radius:6px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);">↺</button>
+            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','active');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);font-size:.68rem;font-weight:600;">↺ Undo</button>
           `}
-          <button onclick="event.stopPropagation();removeWeeklyGoal('${wg.id}')" title="Remove" style="font-size:.65rem;padding:4px 8px;border-radius:6px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);">×</button>
+          <button onclick="event.stopPropagation();removeWeeklyGoal('${wg.id}')" style="padding:8px 8px;border-radius:8px;background:rgba(239,68,68,.06);color:var(--red);border:1px solid rgba(239,68,68,.15);font-size:.68rem;">×</button>
+        </div>
+        <div class="wg-swipe-content" style="border:1px solid ${statusBorder};border-radius:var(--r2);${statusStyle}">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0;margin-top:5px;"></div>
+            <div style="flex:1;min-width:0;">
+              <div class="wg-name">${statusIcon}${name}</div>
+              <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${typeLabel}</div>
+            </div>
+          </div>
         </div>
       </div>`;
     });
@@ -1557,78 +1601,221 @@ function buildWeeklyGoalsSection(){
   
   html += `</div></div>`;
   el.innerHTML = html;
+  
+  // Wire swipe gestures for weekly goals
+  wireWgSwipeGestures();
+}
+
+function closeWgSwipe(el){
+  const container = el.closest('.wg-swipe');
+  if(container) container.classList.remove('swiped');
+}
+
+function wireWgSwipeGestures(){
+  const containers = document.querySelectorAll('.wg-swipe');
+  containers.forEach(container=>{
+    if(container.dataset.swipeWired) return;
+    container.dataset.swipeWired = 'true';
+    
+    const content = container.querySelector('.wg-swipe-content');
+    if(!content) return;
+    
+    let startX=0, startY=0, currentX=0, isSwiping=false, isHorizontalSwipe=null;
+    const isAlreadyOpen = () => container.classList.contains('swiped');
+    
+    content.addEventListener('touchstart', e=>{
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      currentX = startX;
+      isSwiping = true;
+      isHorizontalSwipe = null;
+    }, {passive:true});
+    
+    content.addEventListener('touchmove', e=>{
+      if(!isSwiping) return;
+      currentX = e.touches[0].clientX;
+      const currentY = e.touches[0].clientY;
+      const diffX = startX - currentX;
+      const diffY = Math.abs(startY - currentY);
+      
+      if(isHorizontalSwipe === null && (Math.abs(diffX) > 10 || diffY > 10)){
+        isHorizontalSwipe = Math.abs(diffX) > diffY;
+      }
+      
+      if(isHorizontalSwipe){
+        e.preventDefault();
+        if(isAlreadyOpen()){
+          if(diffX < -15){
+            const translateX = Math.max(0, 180 + diffX);
+            content.style.transform = `translateX(-${translateX}px)`;
+            content.style.transition = 'none';
+          }
+        } else {
+          if(diffX > 15){
+            const translateX = Math.min(180, Math.max(0, diffX));
+            content.style.transform = `translateX(-${translateX}px)`;
+            content.style.transition = 'none';
+          }
+        }
+      }
+    }, {passive:false});
+    
+    content.addEventListener('touchend', ()=>{
+      if(!isSwiping) return;
+      isSwiping = false;
+      content.style.transition = 'transform .25s ease';
+      const diff = startX - currentX;
+      
+      if(isAlreadyOpen()){
+        if(diff < -60){
+          container.classList.remove('swiped');
+        }
+        content.style.transform = '';
+      } else {
+        if(isHorizontalSwipe && diff > 60){
+          // Close any other open wg-swipes
+          document.querySelectorAll('.wg-swipe.swiped').forEach(c=>{
+            if(c !== container) c.classList.remove('swiped');
+          });
+          container.classList.add('swiped');
+        }
+        content.style.transform = '';
+      }
+      isHorizontalSwipe = null;
+    });
+  });
 }
 
 function openAddWeeklyGoal(){
-  // Build picker with goals, projects, and tasks
-  const goals = S.goals.filter(g => !g.archived);
-  const projects = S.projects.filter(p => !p.archived && !p.done);
+  // Build structured picker: Goals → Projects → Tasks hierarchy
+  const goals = S.goals.filter(g => !g.archived && !g.future);
+  const projects = S.projects.filter(p => !p.archived && p.status !== 'abandoned');
   const tasks = S.tasks.filter(t => !t.archived && !t.done);
   
   const weekKey = getCurrentWeekKey();
   const existingIds = getWeeklyGoals(weekKey).map(wg => wg.targetId);
   
-  let html = `<div style="max-height:60vh;overflow-y:auto;">`;
+  let html = `<div style="max-height:60vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">`;
   
-  // Goals
-  if(goals.length > 0){
-    html += `<div style="font-size:.65rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;padding:8px 0 6px;">Goals</div>`;
-    goals.forEach(g => {
-      const added = existingIds.includes(g.id);
-      const col = AREA_COLORS[g.area] || 'var(--a)';
-      const clickAttr = added ? '' : `data-action="add" data-type="goal" data-id="${g.id}"`;
-      html += `<div ${clickAttr} class="${added ? '' : 'wg-picker-item'}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:${added?'default':'pointer'};opacity:${added?'.5':'1'};">
-        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-        <div style="flex:1;font-size:.8rem;">${g.name}</div>
-        ${added ? '<span style="font-size:.6rem;color:var(--green);">Added</span>' : ''}
-      </div>`;
-    });
-  }
-  
-  // Projects
-  if(projects.length > 0){
-    html += `<div style="font-size:.65rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;padding:12px 0 6px;">Projects</div>`;
-    projects.forEach(p => {
-      const added = existingIds.includes(p.id);
-      const goal = S.goals.find(g => g.id === p.goalId);
-      const col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
-      const goalName = goal ? goal.name : '';
-      const clickAttr = added ? '' : `data-action="add" data-type="project" data-id="${p.id}"`;
-      html += `<div ${clickAttr} class="${added ? '' : 'wg-picker-item'}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:${added?'default':'pointer'};opacity:${added?'.5':'1'};">
-        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-        <div style="flex:1;">
-          <div style="font-size:.8rem;">${p.name}</div>
-          ${goalName ? `<div style="font-size:.62rem;color:var(--tx3);">${goalName}</div>` : ''}
+  // Build structured hierarchy: each goal with its projects and tasks underneath
+  goals.forEach((g, gIdx) => {
+    const col = AREA_COLORS[g.area] || 'var(--a)';
+    const emoji = AREA_EMOJIS[g.area] || '✨';
+    const goalAdded = existingIds.includes(g.id);
+    const goalProjects = projects.filter(p => p.goalId === g.id);
+    const goalDirectTasks = tasks.filter(t => t.goalId === g.id && !t.projId);
+    const goalBodyId = 'wgp-goal-' + gIdx;
+    
+    html += `<div style="border:1px solid ${col}30;border-radius:var(--r2);margin-bottom:8px;overflow:hidden;">
+      <!-- Goal header -->
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${col}0a;cursor:pointer;user-select:none;" onclick="toggleSection('${goalBodyId}')">
+        <span style="font-size:.8rem;">${emoji}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.8rem;font-weight:700;color:${col};">${g.name}</div>
+          <div style="font-size:.6rem;color:var(--tx3);">${g.area} · ${goalProjects.length} project${goalProjects.length!==1?'s':''}</div>
         </div>
-        ${added ? '<span style="font-size:.6rem;color:var(--green);">Added</span>' : ''}
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${goalAdded ? '<span style="font-size:.58rem;color:var(--green);font-weight:600;">Added</span>' : 
+            `<button onclick="event.stopPropagation();addWeeklyGoal('goal','${g.id}')" class="btn btsm" style="font-size:.6rem;padding:3px 8px;background:${col}15;color:${col};border:1px solid ${col}30;">+ Add Goal</button>`}
+          <span style="font-size:.6rem;color:var(--tx3);">▾</span>
+        </div>
+      </div>
+      <div id="${goalBodyId}" style="display:none;background:var(--sur);">`;
+    
+    // Projects under this goal
+    goalProjects.forEach((p, pIdx) => {
+      const projAdded = existingIds.includes(p.id);
+      const projTasks = tasks.filter(t => t.projId === p.id);
+      const projBodyId = 'wgp-proj-' + gIdx + '-' + pIdx;
+      const pcol = projectColor(p);
+      
+      html += `<div style="border-top:1px solid var(--bdr);">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px 9px 24px;cursor:pointer;user-select:none;" onclick="toggleSection('${projBodyId}')">
+          <div style="width:6px;height:6px;border-radius:50%;background:${pcol};flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:.78rem;font-weight:600;">${p.name}</div>
+            ${projTasks.length ? `<div style="font-size:.58rem;color:var(--tx3);">${projTasks.length} task${projTasks.length!==1?'s':''}</div>` : ''}
+          </div>
+          ${projAdded ? '<span style="font-size:.58rem;color:var(--green);font-weight:600;">Added</span>' : 
+            `<button onclick="event.stopPropagation();addWeeklyGoal('project','${p.id}')" class="btn btsm" style="font-size:.6rem;padding:3px 8px;background:rgba(59,130,246,.08);color:var(--blue);border:1px solid rgba(59,130,246,.18);">+ Add</button>`}
+          ${projTasks.length ? `<span style="font-size:.6rem;color:var(--tx3);" onclick="event.stopPropagation();toggleSection('${projBodyId}')">▾</span>` : ''}
+        </div>`;
+      
+      // Tasks under this project
+      if(projTasks.length){
+        html += `<div id="${projBodyId}" style="display:none;padding:4px 12px 8px 40px;">`;
+        projTasks.forEach(t => {
+          const taskAdded = existingIds.includes(t.id);
+          html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;${taskAdded?'opacity:.5;':'cursor:pointer;'}" ${taskAdded?'':`onclick="addWeeklyGoal('task','${t.id}')"`}>
+            <div style="width:4px;height:4px;border-radius:50%;background:var(--teal);flex-shrink:0;"></div>
+            <div style="flex:1;font-size:.72rem;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;">${t.name}</div>
+            ${taskAdded ? '<span style="font-size:.55rem;color:var(--green);">Added</span>' : '<span style="font-size:.55rem;color:var(--teal);">+ Add</span>'}
+          </div>`;
+        });
+        html += `</div>`;
+      }
+      
+      html += `</div>`;
+    });
+    
+    // Direct tasks under this goal (no project)
+    if(goalDirectTasks.length){
+      html += `<div style="border-top:1px solid var(--bdr);padding:8px 12px 8px 24px;">
+        <div style="font-size:.6rem;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Direct Tasks</div>`;
+      goalDirectTasks.forEach(t => {
+        const taskAdded = existingIds.includes(t.id);
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;${taskAdded?'opacity:.5;':'cursor:pointer;'}" ${taskAdded?'':`onclick="addWeeklyGoal('task','${t.id}')"`}>
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--teal);flex-shrink:0;"></div>
+          <div style="flex:1;font-size:.72rem;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;">${t.name}</div>
+          ${taskAdded ? '<span style="font-size:.55rem;color:var(--green);">Added</span>' : '<span style="font-size:.55rem;color:var(--teal);">+ Add</span>'}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+    
+    html += `</div></div>`;
+  });
+  
+  // Standalone tasks (no goal or project)
+  const standaloneTasks = tasks.filter(t => !t.goalId && !t.projId);
+  if(standaloneTasks.length){
+    html += `<div style="border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:8px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sur);cursor:pointer;" onclick="toggleSection('wgp-standalone')">
+        <span style="font-size:.8rem;">📋</span>
+        <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--tx2);">Standalone Tasks</div>
+        <span style="font-size:.6rem;color:var(--tx3);">▾</span>
+      </div>
+      <div id="wgp-standalone" style="display:none;padding:8px 12px;">`;
+    standaloneTasks.slice(0,20).forEach(t => {
+      const taskAdded = existingIds.includes(t.id);
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;${taskAdded?'opacity:.5;':'cursor:pointer;'}" ${taskAdded?'':`onclick="addWeeklyGoal('task','${t.id}')"`}>
+        <div style="width:4px;height:4px;border-radius:50%;background:var(--teal);flex-shrink:0;"></div>
+        <div style="flex:1;font-size:.72rem;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;">${t.name}</div>
+        ${taskAdded ? '<span style="font-size:.55rem;color:var(--green);">Added</span>' : '<span style="font-size:.55rem;color:var(--teal);">+ Add</span>'}
       </div>`;
     });
+    html += `</div></div>`;
   }
   
-  // Tasks (limit to 20 most recent/relevant)
-  if(tasks.length > 0){
-    const displayTasks = tasks.slice(0, 20);
-    html += `<div style="font-size:.65rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;padding:12px 0 6px;">Tasks</div>`;
-    displayTasks.forEach(t => {
-      const added = existingIds.includes(t.id);
-      let col = 'var(--teal)';
-      if(t.projId){
-        const proj = S.projects.find(p => p.id === t.projId);
-        if(proj){
-          const goal = S.goals.find(g => g.id === proj.goalId);
-          col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
-        }
-      } else if(t.goalId){
-        const goal = S.goals.find(g => g.id === t.goalId);
-        col = goal ? AREA_COLORS[goal.area] || 'var(--a)' : 'var(--a)';
-      }
-      const clickAttr = added ? '' : `data-action="add" data-type="task" data-id="${t.id}"`;
-      html += `<div ${clickAttr} class="${added ? '' : 'wg-picker-item'}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;cursor:${added?'default':'pointer'};opacity:${added?'.5':'1'};">
-        <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></div>
-        <div style="flex:1;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</div>
-        ${added ? '<span style="font-size:.6rem;color:var(--green);">Added</span>' : ''}
+  // Standalone projects (no goal)
+  const standaloneProjects = projects.filter(p => !p.goalId);
+  if(standaloneProjects.length){
+    html += `<div style="border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:8px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sur);cursor:pointer;" onclick="toggleSection('wgp-standalone-proj')">
+        <span style="font-size:.8rem;">📁</span>
+        <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--tx2);">Standalone Projects</div>
+        <span style="font-size:.6rem;color:var(--tx3);">▾</span>
+      </div>
+      <div id="wgp-standalone-proj" style="display:none;padding:8px 12px;">`;
+    standaloneProjects.forEach(p => {
+      const projAdded = existingIds.includes(p.id);
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;${projAdded?'opacity:.5;':'cursor:pointer;'}" ${projAdded?'':`onclick="addWeeklyGoal('project','${p.id}')"`}>
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;"></div>
+        <div style="flex:1;font-size:.75rem;">${p.name}</div>
+        ${projAdded ? '<span style="font-size:.58rem;color:var(--green);">Added</span>' : '<span style="font-size:.58rem;color:var(--blue);">+ Add</span>'}
       </div>`;
     });
+    html += `</div></div>`;
   }
   
   if(goals.length === 0 && projects.length === 0 && tasks.length === 0){
@@ -1640,17 +1827,6 @@ function openAddWeeklyGoal(){
   html += `</div>`;
   
   showModal('Add Weekly Goal', html, [{label:'Close', cls:'btgh'}]);
-  
-  // Wire click events after modal is created
-  setTimeout(() => {
-    document.querySelectorAll('.wg-picker-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const type = el.dataset.type;
-        const id = el.dataset.id;
-        if(type && id) addWeeklyGoal(type, id);
-      });
-    });
-  }, 50);
 }
 
 function addWeeklyGoal(type, targetId){
@@ -2023,10 +2199,11 @@ function saveReason(habId){
   save(); toast('Reason saved ✓');
 }
 
-let dailyHabitGrouped = true;
+let dailyHabitGrouped = localStorage.getItem('dailyHabitGrouped') !== 'false';
 
 function toggleDailyHabitGrouping(){
   dailyHabitGrouped = !dailyHabitGrouped;
+  localStorage.setItem('dailyHabitGrouped', dailyHabitGrouped);
   const icon = document.getElementById('daily-habit-group-icon');
   const label = document.getElementById('daily-habit-group-label');
   if(icon) icon.textContent = dailyHabitGrouped ? '▤' : '▥';
@@ -2034,10 +2211,11 @@ function toggleDailyHabitGrouping(){
   buildDailyHabits();
 }
 
-let dailyTaskGrouped = true;
+let dailyTaskGrouped = localStorage.getItem('dailyTaskGrouped') !== 'false';
 
 function toggleDailyTaskGrouping(){
   dailyTaskGrouped = !dailyTaskGrouped;
+  localStorage.setItem('dailyTaskGrouped', dailyTaskGrouped);
   const icon = document.getElementById('daily-task-group-icon');
   const label = document.getElementById('daily-task-group-label');
   if(icon) icon.textContent = dailyTaskGrouped ? '▤' : '▥';
@@ -3506,7 +3684,7 @@ function renderPerfAccordion(groups,thisWk,lastWk){
             const sc=score>=80?'var(--green)':score>=50?'var(--a2)':'var(--red)';
             const chg=diff>0?`<span style="color:var(--green);">↑+${diff}%</span>`:diff<0?`<span style="color:var(--red);">↓${diff}%</span>`:`<span style="color:var(--tx3);">—</span>`;
             return `<tr style="border-bottom:1px solid var(--bdr);">
-              <td style="padding:9px 13px;"><div style="font-size:.78rem;font-weight:500;">${h.name}</div><div style="font-size:.59rem;color:var(--tx3);">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div></td>
+              <td style="padding:9px 13px;"><div class="tracker-habit-name" onclick="this.classList.toggle('expanded')" style="max-width:120px;" title="Tap to expand">${h.name}</div><div style="font-size:.59rem;color:var(--tx3);">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div></td>
               <td style="text-align:center;padding:9px 8px;font-size:.88rem;font-weight:700;color:${sc};font-family:var(--ffh);">${score}%</td>
               <td style="text-align:center;padding:9px 8px;font-size:.85rem;font-weight:700;color:var(--a2);font-family:var(--ffh);">${streak>0?streak+'🔥':'0'}</td>
               <td style="text-align:center;padding:9px 8px;font-size:.85rem;font-weight:700;color:${missed>2?'var(--red)':'var(--tx2)'};font-family:var(--ffh);">${missed}</td>
@@ -3686,7 +3864,7 @@ function renderHeatmap(habits){
     html+=`<tr><td colspan="8" style="padding:8px 0 3px;font-size:.62rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.07em;">${g.label}</td></tr>`;
     g.habits.forEach(h=>{
       const col=habitColor(h);
-      html+=`<tr><td style="font-size:.72rem;padding:2px 10px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;">${h.name}</td>
+      html+=`<tr><td class="tracker-habit-name" onclick="this.classList.toggle('expanded')" title="Tap to expand">${h.name}</td>
         ${days.map(d=>{
           const state=getHabitState(d,h.id), future=d>td;
           let bg='rgba(128,128,128,.1)', icon='', cursor='pointer';
@@ -4411,23 +4589,29 @@ const REWARD_CONDITIONS = {
 function buildRewardsPage(){
   updateRewardsKPIs();
   checkRewardProgress();
+  checkMilestoneProgress();
   buildRewardsList();
+  buildMilestonesList();
   buildRewardsHistory();
 }
 
 function updateRewardsKPIs(){
   const rewards = S.rewards || [];
+  const milestones = S.milestones || [];
   const active = rewards.filter(r => r.status === 'active').length;
   const unlocked = rewards.filter(r => r.status === 'unlocked').length;
   const claimed = rewards.filter(r => r.status === 'claimed').length;
+  const msCount = milestones.filter(m => m.status === 'reached').length + '/' + milestones.length;
   
   const elActive = document.getElementById('rewards-active');
   const elUnlocked = document.getElementById('rewards-unlocked');
   const elClaimed = document.getElementById('rewards-claimed');
+  const elMilestones = document.getElementById('rewards-milestones');
   
   if(elActive) elActive.textContent = active;
   if(elUnlocked) elUnlocked.textContent = unlocked;
   if(elClaimed) elClaimed.textContent = claimed;
+  if(elMilestones) elMilestones.textContent = milestones.length;
 }
 
 function getRewardProgress(reward){
@@ -4900,6 +5084,307 @@ function saveRewardEdit(rewardId){
   closeModal('modal-main');
   toast('Reward updated ✓');
   buildRewardsPage();
+}
+
+// ── MILESTONES ───────────────────────────────────────────────────────────
+function openAddMilestone(){
+  const habits = S.habits.filter(h => !h.archived);
+  const goals = S.goals.filter(g => !g.archived && !g.future);
+  
+  document.getElementById('modal-title').textContent = '🏁 Add Milestone';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:.72rem;color:var(--tx2);margin-bottom:12px;line-height:1.5;">
+      A milestone marks a checkpoint. When reached, you'll be prompted with a note you leave for yourself — what to change, what to do next.
+    </div>
+    <div class="igrp"><label class="ilbl">Milestone name <span style="color:var(--red);">*</span></label>
+      <input class="inp" id="ms-name" placeholder="e.g., First 30 days completed"/>
+    </div>
+    
+    <div class="igrp"><label class="ilbl">Condition type <span style="color:var(--red);">*</span></label>
+      <select class="inp" id="ms-type" style="appearance:none;" onchange="updateMilestoneConditionUI()">
+        <option value="">— Select condition —</option>
+        ${Object.entries(REWARD_CONDITIONS).map(([k,v]) => `<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
+      </select>
+    </div>
+    
+    <div id="ms-target-wrap" style="display:none;">
+      <div class="igrp"><label class="ilbl" id="ms-target-label">Target</label>
+        <select class="inp" id="ms-target" style="appearance:none;"></select>
+      </div>
+    </div>
+    
+    <div id="ms-multi-target-wrap" style="display:none;">
+      <div class="igrp"><label class="ilbl" id="ms-multi-target-label">Select projects</label>
+        <div id="ms-multi-target-list" style="max-height:150px;overflow-y:auto;border:1px solid var(--bdr);border-radius:var(--r2);padding:8px;"></div>
+      </div>
+    </div>
+    
+    <div id="ms-value-wrap" style="display:none;">
+      <div class="igrp"><label class="ilbl" id="ms-value-label">Value</label>
+        <input class="inp" type="number" id="ms-value" min="1" value="7"/>
+      </div>
+    </div>
+    
+    <div class="igrp"><label class="ilbl">Note for when milestone is reached <span style="color:var(--purple);">*</span></label>
+      <textarea class="inp" id="ms-note" rows="3" placeholder="What should you change or do next after hitting this milestone? e.g., Increase gym frequency to 5×/week, Start tracking protein intake..."></textarea>
+    </div>
+    
+    <button class="btn bfu" style="background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.3);" onclick="saveNewMilestone()">Add Milestone</button>`;
+  openModal('modal-main');
+}
+
+function updateMilestoneConditionUI(){
+  const type = document.getElementById('ms-type')?.value;
+  const targetWrap = document.getElementById('ms-target-wrap');
+  const multiTargetWrap = document.getElementById('ms-multi-target-wrap');
+  const valueWrap = document.getElementById('ms-value-wrap');
+  const targetSel = document.getElementById('ms-target');
+  const valueLabel = document.getElementById('ms-value-label');
+  
+  if(!type){
+    if(targetWrap) targetWrap.style.display = 'none';
+    if(multiTargetWrap) multiTargetWrap.style.display = 'none';
+    if(valueWrap) valueWrap.style.display = 'none';
+    return;
+  }
+  
+  const cond = REWARD_CONDITIONS[type];
+  targetWrap.style.display = 'none';
+  multiTargetWrap.style.display = 'none';
+  
+  if(cond.needsMultiTarget){
+    multiTargetWrap.style.display = 'block';
+    const projects = S.projects.filter(p => !p.archived && p.status !== 'complete');
+    const multiList = document.getElementById('ms-multi-target-list');
+    if(projects.length){
+      multiList.innerHTML = projects.map(p => `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid var(--bdr);">
+        <input type="checkbox" class="ms-proj-check" value="${p.id}" style="width:16px;height:16px;"/>
+        <span style="font-size:.78rem;">${p.name}</span>
+      </label>`).join('');
+    } else {
+      multiList.innerHTML = '<div style="font-size:.72rem;color:var(--tx3);padding:8px;">No active projects</div>';
+    }
+    valueWrap.style.display = 'none';
+  } else if(cond.needsTarget){
+    targetWrap.style.display = 'block';
+    let options = '<option value="">— Select —</option>';
+    if(type === 'habit_streak' || type === 'habit_count'){
+      const habits = S.habits.filter(h => !h.archived);
+      options += habits.map(h => `<option value="${h.id}">${h.name}</option>`).join('');
+      document.getElementById('ms-target-label').textContent = 'Select habit';
+    } else if(type === 'goal_complete'){
+      const goals = S.goals.filter(g => !g.archived && !g.future);
+      options += goals.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+      document.getElementById('ms-target-label').textContent = 'Select goal';
+    }
+    targetSel.innerHTML = options;
+  }
+  
+  if(type !== 'goal_complete' && type !== 'project_complete'){
+    valueWrap.style.display = 'block';
+    valueLabel.textContent = `Number of ${cond.unit}`;
+  } else {
+    valueWrap.style.display = 'none';
+  }
+}
+
+function saveNewMilestone(){
+  const name = document.getElementById('ms-name')?.value.trim();
+  if(!name){ toast('Enter a milestone name'); return; }
+  
+  const type = document.getElementById('ms-type')?.value;
+  if(!type){ toast('Select a condition type'); return; }
+  
+  const note = document.getElementById('ms-note')?.value.trim();
+  if(!note){ toast('Add a note for when you reach this milestone'); return; }
+  
+  const cond = REWARD_CONDITIONS[type];
+  let targetId = null, targetIds = null, value = 1;
+  
+  if(cond.needsMultiTarget){
+    const checkboxes = document.querySelectorAll('.ms-proj-check:checked');
+    targetIds = Array.from(checkboxes).map(cb => cb.value);
+    if(!targetIds.length){ toast('Select at least one project'); return; }
+  } else if(cond.needsTarget){
+    targetId = document.getElementById('ms-target')?.value;
+    if(!targetId){ toast('Select a target'); return; }
+  }
+  
+  if(type !== 'goal_complete' && type !== 'project_complete'){
+    value = parseInt(document.getElementById('ms-value')?.value) || 1;
+  }
+  
+  const milestone = {
+    id: uid(),
+    name,
+    conditions: [{ type, value, targetId, targetIds }],
+    note,
+    status: 'active',
+    reachedAt: null,
+    acknowledgedAt: null,
+    createdAt: today()
+  };
+  
+  if(!S.milestones) S.milestones = [];
+  S.milestones.push(milestone);
+  save();
+  closeModal('modal-main');
+  toast('Milestone added 🏁');
+  buildRewardsPage();
+}
+
+function checkMilestoneProgress(){
+  if(!S.milestones) return;
+  let changed = false;
+  
+  S.milestones.filter(m => m.status === 'active').forEach(m => {
+    const progress = getRewardProgress(m); // reuse same progress calc
+    if(progress.isComplete){
+      m.status = 'reached';
+      m.reachedAt = today();
+      changed = true;
+      showMilestoneReachedPopup(m);
+    }
+  });
+  
+  if(changed) save();
+}
+
+function showMilestoneReachedPopup(milestone){
+  document.getElementById('modal-title').textContent = '🏁 Milestone Reached!';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="text-align:center;padding:10px 0;">
+      <div style="font-size:3rem;margin-bottom:12px;">🎯</div>
+      <div style="font-size:1.1rem;font-weight:700;color:var(--purple);margin-bottom:8px;">
+        ${milestone.name}
+      </div>
+      <div style="font-size:.78rem;color:var(--tx2);margin-bottom:16px;">
+        You've reached this milestone! Here's the note you left for yourself:
+      </div>
+      <div class="milestone-note">
+        <div style="font-size:.68rem;font-weight:700;color:var(--purple);margin-bottom:4px;">📝 Your note:</div>
+        ${milestone.note}
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;">
+        <button onclick="acknowledgeMilestone('${milestone.id}');closeModal('modal-main')" class="btn bfu" style="flex:1;background:rgba(168,85,247,.12);color:var(--purple);border:1px solid rgba(168,85,247,.25);">Got it, I'll update ✓</button>
+      </div>
+    </div>`;
+  openModal('modal-main');
+}
+
+function acknowledgeMilestone(milestoneId){
+  const m = (S.milestones||[]).find(m => m.id === milestoneId); if(!m) return;
+  m.status = 'acknowledged';
+  m.acknowledgedAt = today();
+  save();
+  toast('Milestone acknowledged 🏁');
+  buildRewardsPage();
+}
+
+function deleteMilestone(milestoneId){
+  if(!confirm('Delete this milestone?')) return;
+  S.milestones = (S.milestones||[]).filter(m => m.id !== milestoneId);
+  save();
+  toast('Milestone deleted');
+  buildRewardsPage();
+}
+
+function buildMilestonesList(){
+  const el = document.getElementById('milestones-list'); if(!el) return;
+  const milestones = (S.milestones || []);
+  
+  if(!milestones.length){
+    el.innerHTML = '';
+    return;
+  }
+  
+  // Active milestones
+  const active = milestones.filter(m => m.status === 'active');
+  const reached = milestones.filter(m => m.status === 'reached');
+  const acknowledged = milestones.filter(m => m.status === 'acknowledged');
+  
+  let html = `<div class="sl" style="margin-top:16px;">🏁 Milestones</div>`;
+  
+  // Reached milestones (need acknowledgment)
+  reached.forEach(m => {
+    const progress = getRewardProgress(m);
+    html += `<div style="background:rgba(168,85,247,.08);border:2px solid rgba(168,85,247,.3);border-radius:var(--r);padding:14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.2rem;">🏁</span>
+          <div>
+            <div style="font-size:.85rem;font-weight:700;color:var(--purple);">${m.name}</div>
+            <div style="font-size:.6rem;color:var(--green);font-weight:600;">REACHED!</div>
+          </div>
+        </div>
+        <button onclick="acknowledgeMilestone('${m.id}')" class="btn btsm" style="background:rgba(168,85,247,.12);color:var(--purple);border:1px solid rgba(168,85,247,.25);">Review</button>
+      </div>
+      <div class="milestone-note">
+        <div style="font-size:.62rem;font-weight:600;color:var(--purple);margin-bottom:3px;">📝 Update to make:</div>
+        ${m.note}
+      </div>
+    </div>`;
+  });
+  
+  // Active milestones
+  active.forEach(m => {
+    const progress = getRewardProgress(m);
+    const cond = m.conditions[0];
+    const condInfo = REWARD_CONDITIONS[cond?.type];
+    
+    let targetLabel = '';
+    if(cond.type === 'habit_streak' || cond.type === 'habit_count'){
+      const habit = S.habits.find(h => h.id === cond.targetId);
+      targetLabel = habit ? ` (${habit.name})` : '';
+    } else if(cond.type === 'goal_complete'){
+      const goal = S.goals.find(g => g.id === cond.targetId);
+      targetLabel = goal ? ` (${goal.name})` : '';
+    }
+    
+    const prog = progress.conditions[0] || {pct:0, current:0, target:1};
+    
+    html += `<div style="background:var(--sur);border:1px solid rgba(168,85,247,.2);border-radius:var(--r);padding:14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1rem;">🏁</span>
+          <div style="font-size:.85rem;font-weight:700;">${m.name}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <span class="milestone-badge">${progress.overallPct}%</span>
+          <button onclick="deleteMilestone('${m.id}')" class="btn btsm btr" style="padding:3px 6px;">×</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:.72rem;">${condInfo?.icon||''}</span>
+        <div style="flex:1;font-size:.68rem;color:var(--tx2);">${condInfo?.label||''}${targetLabel}</div>
+        <span style="font-size:.62rem;font-weight:600;color:${prog.pct>=100?'var(--green)':'var(--tx3)'};">${prog.current}/${prog.target}</span>
+      </div>
+      <div class="pb" style="height:5px;"><div class="pf" style="width:${progress.overallPct}%;background:${progress.overallPct>=80?'var(--purple)':'var(--a)'};"></div></div>
+      <div style="font-size:.65rem;color:var(--tx3);margin-top:6px;font-style:italic;">📝 "${m.note.slice(0,60)}${m.note.length>60?'...':''}"</div>
+    </div>`;
+  });
+  
+  // Acknowledged milestones (collapsed)
+  if(acknowledged.length){
+    html += `<div onclick="toggleSection('ms-ack-list')" style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;padding:8px 12px;background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.12);border-radius:var(--r2);">
+      <span style="font-size:.7rem;color:var(--tx3);">▶</span>
+      <span style="font-size:.72rem;font-weight:600;color:var(--purple);flex:1;">✓ Past Milestones (${acknowledged.length})</span>
+    </div>
+    <div id="ms-ack-list" style="display:none;margin-top:6px;">`;
+    acknowledged.forEach(m => {
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;opacity:.7;">
+        <span style="font-size:.85rem;">🏁</span>
+        <div style="flex:1;">
+          <div style="font-size:.75rem;font-weight:600;color:var(--tx2);">${m.name}</div>
+          <div style="font-size:.58rem;color:var(--tx3);">Reached ${m.reachedAt || ''}</div>
+        </div>
+        <button onclick="showMilestoneReachedPopup({name:'${m.name.replace(/'/g,"\\'")}',note:'${m.note.replace(/'/g,"\\'").replace(/\n/g,'\\n')}',id:'${m.id}'})" class="btn btsm btgh" style="font-size:.6rem;">View Note</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  
+  el.innerHTML = html;
 }
 
 // ── SETTINGS — WORKSPACE ─────────────────────────────────────────────────
