@@ -1546,7 +1546,14 @@ function buildWeeklyGoalsSection(){
   
   // Render goals list
   if(goals.length > 0){
-    goals.forEach(wg => {
+    // Sort: active first, then completed/notcompleted/moved at bottom
+    const sorted = [...goals].sort((a,b) => {
+      const aActive = a.status === 'active' ? 0 : 1;
+      const bActive = b.status === 'active' ? 0 : 1;
+      return aActive - bActive;
+    });
+    
+    sorted.forEach(wg => {
       const name = getWeeklyGoalName(wg);
       const color = getWeeklyGoalColor(wg);
       const typeLabel = wg.type.charAt(0).toUpperCase() + wg.type.slice(1);
@@ -1559,16 +1566,16 @@ function buildWeeklyGoalsSection(){
       let statusBorder = 'var(--bdr)';
       if(isCompleted){
         statusIcon = '✓ ';
-        statusStyle = 'color:var(--green);opacity:.8;';
-        statusBorder = 'rgba(34,197,94,.25)';
+        statusStyle = 'color:var(--tx3);opacity:.55;';
+        statusBorder = 'var(--bdr)';
       } else if(isNotCompleted){
         statusIcon = '✗ ';
-        statusStyle = 'color:var(--red);text-decoration:line-through;opacity:.6;';
-        statusBorder = 'rgba(239,68,68,.2)';
+        statusStyle = 'color:var(--red);text-decoration:line-through;opacity:.5;';
+        statusBorder = 'rgba(239,68,68,.15)';
       } else if(isMoved){
         statusIcon = '→ ';
-        statusStyle = 'color:var(--blue);opacity:.7;';
-        statusBorder = 'rgba(59,130,246,.2)';
+        statusStyle = 'color:var(--blue);opacity:.55;';
+        statusBorder = 'rgba(59,130,246,.15)';
       }
       
       html += `<div class="wg-swipe" data-wgid="${wg.id}">
@@ -1582,12 +1589,12 @@ function buildWeeklyGoalsSection(){
           `}
           <button onclick="event.stopPropagation();removeWeeklyGoal('${wg.id}')" style="padding:8px 8px;border-radius:8px;background:rgba(239,68,68,.06);color:var(--red);border:1px solid rgba(239,68,68,.15);font-size:.68rem;">×</button>
         </div>
-        <div class="wg-swipe-content" style="border:1px solid ${statusBorder};border-radius:var(--r2);${statusStyle}">
+        <div class="wg-swipe-content" style="border:1px solid ${statusBorder};border-radius:var(--r2);${statusStyle}${isCompleted?'background:var(--bg2);':''}">
           <div style="display:flex;align-items:flex-start;gap:10px;">
-            <div style="width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0;margin-top:5px;"></div>
+            <div style="width:6px;height:6px;border-radius:50%;background:${isCompleted?'var(--tx3)':color};flex-shrink:0;margin-top:5px;${isCompleted?'opacity:.4;':''}"></div>
             <div style="flex:1;min-width:0;">
-              <div class="wg-name">${statusIcon}${name}</div>
-              <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${typeLabel}</div>
+              <div class="wg-name" style="${isCompleted?'text-decoration:line-through;':''}">${statusIcon}${name}</div>
+              <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${typeLabel}${isCompleted?' · Done':''}</div>
             </div>
           </div>
         </div>
