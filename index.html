@@ -391,6 +391,15 @@ select.inp{appearance:none;}
 .note-body-wrap{padding:0 12px 12px;}
 .note-textarea{width:100%;min-height:42vh;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r2);padding:11px;font-size:.85rem;line-height:1.6;color:var(--tx);outline:none;resize:vertical;font-family:inherit;}
 .note-textarea:focus{border-color:var(--a);}
+/* weekly score panel */
+.score-bars{margin:6px 0 4px;}
+.score-bar{margin-bottom:9px;}
+.score-bar.muted{opacity:.45;}
+.score-bar-top{display:flex;justify-content:space-between;align-items:baseline;font-size:.74rem;font-weight:600;color:var(--tx);margin-bottom:4px;}
+.score-bar-val{color:var(--tx2);font-weight:700;font-size:.68rem;}
+.score-track{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden;}
+.score-fill{height:100%;border-radius:99px;transition:width .4s;}
+.score-delta{font-size:.74rem;margin-top:4px;line-height:1.4;}
 </style>
 </head>
 <body>
@@ -805,6 +814,7 @@ def('studyAutoTicked',{});// {date: habitId} — the habit study auto-completed 
 def('selfNotes',[          // notes-to-self, openable from the topbar; bodies can be long
   {id:'note_both', label:'When tired or unmotivated, read this', body:'', updatedAt:null}
 ]);
+def('scorePopupLastShown',null); // date the morning weekly-score popup was last shown
 
 const APP_VERSION = 'v40';
 
@@ -2876,11 +2886,12 @@ function updateTopbarRight(){
   const el=document.getElementById('topbar-right'); if(!el) return;
   const c=getActiveCycle();
   const hasNotes=(S.selfNotes||[]).some(n=>(n.body||'').trim());
+  const scoreBtn=`<button class="topbar-notes-btn" onclick="openScorePanel(false)" title="Weekly score" aria-label="Weekly score">📊</button>`;
   const notesBtn=`<button class="topbar-notes-btn" onclick="openNotes()" title="Notes to self" aria-label="Notes to self">📝${hasNotes?'<span class="nb-dot"></span>':''}</button>`;
   const cycleEl=c
     ? `<div class="cycle-badge active">🔒 Cycle active · ${c.endDate}</div>`
     : `<div class="cycle-badge" onclick="goTab('settings',document.getElementById('nb-settings'));switchSettingsTab('cycle',document.getElementById('st-cycle'))" style="cursor:pointer;">+ Start cycle</div>`;
-  el.innerHTML=notesBtn+cycleEl;
+  el.innerHTML=scoreBtn+notesBtn+cycleEl;
 }
 
 function allHabitsAddressed(){
@@ -7446,6 +7457,130 @@ function deleteNote(id){
   toast('Note deleted');
 }
 
+// ── WEEKLY SCORE ────────────────────────────────────────────────────────
+// One score per week = weighted average of the dimensions you actually used.
+// Empty dimensions are skipped (not scored 0). Tune the weights here:
+const SCORE_WEIGHTS = { study:3, habits:2, tasks:1, chores:1, goals:1 };
+let scoreChart = null;
+
+function scoreColor(pct){ return pct>=80?'#22c55e':pct>=60?'#f5a623':'#e8622a'; }
+function scoreWeekKeyForOffset(offset){ return getWeekKey(getWeekDays(offset)[3]); } // mid-week → stable Monday key
+
+function dimHabits(days){
+  const habits = getActiveHabits();
+  let done=0,total=0;
+  days.forEach(d=>habits.forEach(h=>{ if(shouldShowHabitOnDay(h,d)){ total++; if(getHabitState(d,h.id)==='done') done++; } }));
+  return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
+}
+function dimTasks(days){
+  const dset = new Set(days);
+  const tasks = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && t.dueDate && dset.has(t.dueDate));
+  const total = tasks.length, done = tasks.filter(t=>t.done).length;
+  return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
+}
+function dimPicked(days, todayMap, logMap){ // generic for chores / study
+  let done=0,total=0;
+  days.forEach(d=>{ const sel=(todayMap?.[d]||[]); total+=sel.length; sel.forEach(id=>{ if(logMap?.[d]?.[id]) done++; }); });
+  return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
+}
+function dimGoals(offset){
+  const wk = scoreWeekKeyForOffset(offset);
+  const goals = (S.weeklyGoals?.[wk]||[]).filter(g=>g.status!=='moved');
+  const total = goals.length, done = goals.filter(g=>g.status==='completed').length;
+  return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
+}
+
+function weekScore(offset){
+  let days = getWeekDays(offset);
+  const td = today();
+  if(offset===0) days = days.filter(d=>d<=td); // current week: elapsed days only
+  const dims = {
+    study:  dimPicked(days, S.studyToday, S.studyLog),
+    habits: dimHabits(days),
+    tasks:  dimTasks(days),
+    chores: dimPicked(days, S.choreToday, S.choreLog),
+    goals:  dimGoals(offset)
+  };
+  let wsum=0, psum=0;
+  for(const k in dims){ if(dims[k].active){ const w=SCORE_WEIGHTS[k]||1; wsum+=w; psum+=w*dims[k].pct; } }
+  return { overall: wsum?Math.round(psum/wsum):null, dims, days };
+}
+
+function scoreRingSvg(pct, size){
+  const r=32, circ=2*Math.PI*r, off=circ-(circ*(pct||0)/100), col=scoreColor(pct||0);
+  size=size||96;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 80 80" style="display:block;">
+    <circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="7"/>
+    <circle cx="40" cy="40" r="${r}" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round"
+      stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 40 40)"/>
+    <text x="40" y="41" text-anchor="middle" dominant-baseline="central" font-size="17" font-weight="800" fill="var(--tx)">${pct==null?'—':pct+'%'}</text>
+  </svg>`;
+}
+function scoreBar(label, dim, emoji){
+  if(!dim.active) return `<div class="score-bar muted"><div class="score-bar-top"><span>${emoji} ${label}</span><span class="score-bar-val">— not used</span></div><div class="score-track"><div class="score-fill" style="width:0%"></div></div></div>`;
+  const col=scoreColor(dim.pct);
+  return `<div class="score-bar"><div class="score-bar-top"><span>${emoji} ${label}</span><span class="score-bar-val">${dim.done}/${dim.total} · ${dim.pct}%</span></div><div class="score-track"><div class="score-fill" style="width:${dim.pct}%;background:${col};"></div></div></div>`;
+}
+
+function openScorePanel(isMorning){ renderScorePanel(!!isMorning); openModal('modal-main'); }
+
+function renderScorePanel(isMorning){
+  const titleEl=document.getElementById('modal-title');
+  const bodyEl=document.getElementById('modal-body');
+  if(titleEl) titleEl.textContent=(isMorning?'☀️ ':'📊 ')+'Weekly score';
+  if(!bodyEl) return;
+  const tw=weekScore(0), lw=weekScore(-1);
+
+  let deltaHtml;
+  if(tw.overall==null){
+    deltaHtml=`<div class="score-delta" style="color:var(--tx3);">Nothing tracked yet this week — make a start today.</div>`;
+  } else if(lw.overall==null){
+    deltaHtml=`<div class="score-delta" style="color:var(--tx3);">First tracked week — no comparison yet. Set the bar today.</div>`;
+  } else {
+    const d=tw.overall-lw.overall;
+    const arrow=d>0?'▲':d<0?'▼':'■';
+    const col=d>0?'var(--green)':d<0?'var(--red)':'var(--tx3)';
+    const msg=d>0?`Up ${d}% on last week — keep it going.`
+            :d<0?`Down ${Math.abs(d)}% so far. A little more to pass last week (${lw.overall}%).`
+            :`Level with last week.`;
+    deltaHtml=`<div class="score-delta" style="color:${col};font-weight:700;">${arrow} ${msg}</div>`;
+  }
+
+  bodyEl.innerHTML=`
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+      <div>${scoreRingSvg(tw.overall,98)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;color:var(--tx3);font-weight:700;">This week so far</div>
+        <div style="font-size:.78rem;color:var(--tx2);margin-top:3px;">Last week: <b style="color:var(--tx);">${lw.overall==null?'—':lw.overall+'%'}</b></div>
+        ${deltaHtml}
+      </div>
+    </div>
+    <div class="score-bars">
+      ${scoreBar('Study', tw.dims.study,'📚')}
+      ${scoreBar('Habits', tw.dims.habits,'✨')}
+      ${scoreBar('Tasks', tw.dims.tasks,'✅')}
+      ${scoreBar('Chores', tw.dims.chores,'🧹')}
+      ${scoreBar('Weekly goals', tw.dims.goals,'🎯')}
+    </div>
+    <div class="chore-lib-sec-lbl">📈 Last 4 weeks</div>
+    <div style="height:150px;position:relative;"><canvas id="score-trend-canvas"></canvas></div>
+    <div style="font-size:.6rem;color:var(--tx3);margin-top:8px;text-align:center;line-height:1.5;">Weighted: Study ×3 · Habits ×2 · Tasks/Chores/Goals ×1. Categories you didn't use are skipped, not scored 0.</div>`;
+  setTimeout(renderScoreTrend, 40);
+}
+
+function renderScoreTrend(){
+  const cv=document.getElementById('score-trend-canvas');
+  if(!cv || typeof Chart==='undefined') return;
+  if(scoreChart){ try{scoreChart.destroy();}catch(e){} scoreChart=null; }
+  const offsets=[-3,-2,-1,0];
+  const labels=offsets.map(o=>{ const d=getWeekDays(o)[0]; return d.slice(5).replace('-','/'); });
+  const data=offsets.map(o=>weekScore(o).overall);
+  const ptColors=data.map(v=> v==null?'#888':scoreColor(v));
+  scoreChart=new Chart(cv,{type:'line',
+    data:{labels,datasets:[{label:'Weekly score',data,borderColor:'#a855f7',backgroundColor:'rgba(168,85,247,.12)',fill:true,tension:.3,spanGaps:true,pointRadius:5,pointHoverRadius:6,pointBackgroundColor:ptColors,pointBorderColor:'#fff',pointBorderWidth:1.5}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y==null?'No data':ctx.parsed.y+'%'}}},scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
+}
+
 function init(){
   migrateV37();
   // One-time: collapse the old 3 seeded notes down to just the combined one,
@@ -7464,6 +7599,13 @@ function init(){
   checkDayReset(false);
   buildDailyView();
   loadPrefValues();
+  // Morning weekly-score nudge: first open of the day, 12 AM–9 AM, once per day
+  try{
+    if(new Date().getHours() < 9 && S.scorePopupLastShown !== today()){
+      S.scorePopupLastShown = today(); save();
+      openScorePanel(true);
+    }
+  }catch(e){}
   // Display version
   const verEl = document.getElementById('app-version');
   if(verEl) verEl.textContent = APP_VERSION;
