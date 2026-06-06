@@ -7490,20 +7490,26 @@ function dimGoals(offset){
   return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
 }
 
-function weekScore(offset){
-  let days = getWeekDays(offset);
-  const td = today();
-  if(offset===0) days = days.filter(d=>d<=td); // current week: elapsed days only
+function computeScoreForDays(days, goalOffset){
   const dims = {
     study:  dimPicked(days, S.studyToday, S.studyLog),
     habits: dimHabits(days),
     tasks:  dimTasks(days),
     chores: dimPicked(days, S.choreToday, S.choreLog),
-    goals:  dimGoals(offset)
+    goals:  dimGoals(goalOffset)
   };
   let wsum=0, psum=0;
   for(const k in dims){ if(dims[k].active){ const w=SCORE_WEIGHTS[k]||1; wsum+=w; psum+=w*dims[k].pct; } }
   return { overall: wsum?Math.round(psum/wsum):null, dims, days };
+}
+function weekScore(offset){
+  let days = getWeekDays(offset);
+  if(offset===0) days = days.filter(d=>d<=today()); // current week: elapsed days only
+  return computeScoreForDays(days, offset);
+}
+function elapsedCount(){ return getWeekDays(0).filter(d=>d<=today()).length; }
+function weekScorePace(){ // last week measured through the same weekday as today (fair comparison)
+  return computeScoreForDays(getWeekDays(-1).slice(0, elapsedCount()), -1);
 }
 
 function scoreRingSvg(pct, size){
@@ -7529,20 +7535,20 @@ function renderScorePanel(isMorning){
   const bodyEl=document.getElementById('modal-body');
   if(titleEl) titleEl.textContent=(isMorning?'☀️ ':'📊 ')+'Weekly score';
   if(!bodyEl) return;
-  const tw=weekScore(0), lw=weekScore(-1);
+  const tw=weekScore(0), pace=weekScorePace(), lwFinal=weekScore(-1);
 
   let deltaHtml;
   if(tw.overall==null){
     deltaHtml=`<div class="score-delta" style="color:var(--tx3);">Nothing tracked yet this week — make a start today.</div>`;
-  } else if(lw.overall==null){
-    deltaHtml=`<div class="score-delta" style="color:var(--tx3);">First tracked week — no comparison yet. Set the bar today.</div>`;
+  } else if(pace.overall==null){
+    deltaHtml=`<div class="score-delta" style="color:var(--tx3);">No last-week data to compare yet. Set the bar today.</div>`;
   } else {
-    const d=tw.overall-lw.overall;
+    const d=tw.overall-pace.overall;
     const arrow=d>0?'▲':d<0?'▼':'■';
     const col=d>0?'var(--green)':d<0?'var(--red)':'var(--tx3)';
-    const msg=d>0?`Up ${d}% on last week — keep it going.`
-            :d<0?`Down ${Math.abs(d)}% so far. A little more to pass last week (${lw.overall}%).`
-            :`Level with last week.`;
+    const msg=d>0?`${d}% ahead of last week's pace — keep it going.`
+            :d<0?`${Math.abs(d)}% behind last week's pace — push a little.`
+            :`Matching last week's pace exactly.`;
     deltaHtml=`<div class="score-delta" style="color:${col};font-weight:700;">${arrow} ${msg}</div>`;
   }
 
@@ -7551,7 +7557,7 @@ function renderScorePanel(isMorning){
       <div>${scoreRingSvg(tw.overall,98)}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;color:var(--tx3);font-weight:700;">This week so far</div>
-        <div style="font-size:.78rem;color:var(--tx2);margin-top:3px;">Last week: <b style="color:var(--tx);">${lw.overall==null?'—':lw.overall+'%'}</b></div>
+        <div style="font-size:.74rem;color:var(--tx2);margin-top:3px;">Last week by today: <b style="color:var(--tx);">${pace.overall==null?'—':pace.overall+'%'}</b> · finished <b style="color:var(--tx);">${lwFinal.overall==null?'—':lwFinal.overall+'%'}</b></div>
         ${deltaHtml}
       </div>
     </div>
@@ -7562,9 +7568,9 @@ function renderScorePanel(isMorning){
       ${scoreBar('Chores', tw.dims.chores,'🧹')}
       ${scoreBar('Weekly goals', tw.dims.goals,'🎯')}
     </div>
-    <div class="chore-lib-sec-lbl">📈 Last 4 weeks</div>
-    <div style="height:150px;position:relative;"><canvas id="score-trend-canvas"></canvas></div>
-    <div style="font-size:.6rem;color:var(--tx3);margin-top:8px;text-align:center;line-height:1.5;">Weighted: Study ×3 · Habits ×2 · Tasks/Chores/Goals ×1. Categories you didn't use are skipped, not scored 0.</div>`;
+    <div class="chore-lib-sec-lbl">📈 Last 6 weeks · by category</div>
+    <div style="height:190px;position:relative;"><canvas id="score-trend-canvas"></canvas></div>
+    <div style="font-size:.6rem;color:var(--tx3);margin-top:8px;text-align:center;line-height:1.5;">Weighted total: Study ×3 · Habits ×2 · Tasks/Chores/Goals ×1. Categories you didn't use are skipped, not scored 0.</div>`;
   setTimeout(renderScoreTrend, 40);
 }
 
@@ -7572,13 +7578,29 @@ function renderScoreTrend(){
   const cv=document.getElementById('score-trend-canvas');
   if(!cv || typeof Chart==='undefined') return;
   if(scoreChart){ try{scoreChart.destroy();}catch(e){} scoreChart=null; }
-  const offsets=[-3,-2,-1,0];
-  const labels=offsets.map(o=>{ const d=getWeekDays(o)[0]; return d.slice(5).replace('-','/'); });
-  const data=offsets.map(o=>weekScore(o).overall);
-  const ptColors=data.map(v=> v==null?'#888':scoreColor(v));
-  scoreChart=new Chart(cv,{type:'line',
-    data:{labels,datasets:[{label:'Weekly score',data,borderColor:'#a855f7',backgroundColor:'rgba(168,85,247,.12)',fill:true,tension:.3,spanGaps:true,pointRadius:5,pointHoverRadius:6,pointBackgroundColor:ptColors,pointBorderColor:'#fff',pointBorderWidth:1.5}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y==null?'No data':ctx.parsed.y+'%'}}},scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
+  const offsets=[-5,-4,-3,-2,-1,0];
+  const labels=offsets.map(o=>getWeekDays(o)[0].slice(5).replace('-','/'));
+  const scores=offsets.map(o=>weekScore(o));
+  const line=(label,color,width,extract,isTotal)=>({
+    label, data:scores.map(extract), borderColor:color,
+    backgroundColor:isTotal?'rgba(168,85,247,.10)':'transparent', fill:!!isTotal,
+    borderWidth:width, tension:.3, spanGaps:true,
+    pointRadius:isTotal?4:2, pointHoverRadius:isTotal?6:4,
+    pointBackgroundColor:color, pointBorderColor:'#fff', pointBorderWidth:1
+  });
+  const datasets=[
+    line('Total','#a855f7',3,s=>s.overall,true),
+    line('Study','#3b82f6',1.5,s=>s.dims.study.active?s.dims.study.pct:null),
+    line('Habits','#22c55e',1.5,s=>s.dims.habits.active?s.dims.habits.pct:null),
+    line('Tasks','#14b8a6',1.5,s=>s.dims.tasks.active?s.dims.tasks.pct:null),
+    line('Chores','#e8622a',1.5,s=>s.dims.chores.active?s.dims.chores.pct:null),
+    line('Goals','#f5a623',1.5,s=>s.dims.goals.active?s.dims.goals.pct:null)
+  ];
+  scoreChart=new Chart(cv,{type:'line',data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:true,position:'bottom',labels:{font:{size:9},boxWidth:9,padding:7,color:'#888',usePointStyle:true}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y==null?'—':ctx.parsed.y+'%')}}},
+      scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
 }
 
 function init(){
