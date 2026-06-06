@@ -370,6 +370,15 @@ select.inp{appearance:none;}
 .chore-quick-btn{padding:9px 15px;border-radius:var(--r2);background:linear-gradient(135deg,var(--a),var(--a2));color:#fff;font-size:.78rem;font-weight:700;flex-shrink:0;}
 .chore-quick-btn:active{transform:scale(.97);}
 .chore-full-note{margin-top:7px;text-align:center;font-size:.66rem;color:var(--tx3);}
+/* 5-up KPI strip (Done/Tasks/Chores/Study/Weekly) */
+.sg5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:9px;}
+.sg5 .stile{padding:9px 3px;}
+.sg5 .sv{font-size:1.02rem;}
+.sg5 .slb{font-size:.5rem;}
+/* study attach badge */
+.study-attach{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:.6rem;font-weight:700;background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.2);}
+.study-attach-note{margin-top:6px;font-size:.64rem;color:var(--tx3);line-height:1.4;}
+.study-attach-card{background:linear-gradient(135deg,rgba(168,85,247,.07),rgba(168,85,247,.02));border:1px solid rgba(168,85,247,.22);border-radius:var(--r);padding:11px;margin-bottom:8px;}
 </style>
 </head>
 <body>
@@ -446,12 +455,16 @@ select.inp{appearance:none;}
     <div id="daily-content-locked" style="opacity:0.4;pointer-events:none;">
 
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-    <div class="sg4" style="flex:1;margin:0;">
+    <div class="sg5" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
       <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0</div><div class="slb">Tasks</div></div>
       <div class="stile" onclick="document.getElementById('chores-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
         <div class="sv" id="hchores" style="color:var(--blue)">0/0</div>
         <div class="slb">Chores</div>
+      </div>
+      <div class="stile" onclick="document.getElementById('study-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
+        <div class="sv" id="hstudy" style="color:var(--purple)">0/0</div>
+        <div class="slb">Study</div>
       </div>
       <div class="stile" onclick="scrollToWeeklyGoals()" style="cursor:pointer;">
         <div class="sv" id="hweekly" style="color:var(--a2)">0/0</div>
@@ -480,6 +493,9 @@ select.inp{appearance:none;}
 
   <!-- Weekly Goals Section -->
   <div id="weekly-goals-section"></div>
+
+  <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
+  <div id="study-section"></div>
 
   <!-- Today's habits label -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:8px;">
@@ -768,6 +784,12 @@ def('chores',[]);        // [{id,name,recur:{type:'none'|'daily'|'weekly'|'month
 def('choreLog',{});      // {date:{choreId:1}} — completion per day
 def('choreToday',{});    // {date:[choreId,...]} — chores surfaced for that day (max 3)
 def('choreDismissed',{});// {date:[choreId,...]} — chores user removed from that day (so they aren't re-suggested)
+def('studies',[]);       // [{id,name,recur:{...},archived,createdAt}] — mirrors chores
+def('studyLog',{});      // {date:{studyId:1}} — completion per day
+def('studyToday',{});    // {date:[studyId,...]} — study items surfaced for that day (max 3)
+def('studyDismissed',{});// {date:[studyId,...]}
+def('studyHabitId',null);// persistent habit this study block is attached to (or null)
+def('studyAutoTicked',{});// {date: habitId} — the habit study auto-completed that day (so it can be reverted)
 
 const APP_VERSION = 'v40';
 
@@ -949,9 +971,11 @@ function buildDailyView(){
   updateWksLeftTile();
   buildPlanDaySection();
   buildWeeklyGoalsSection();
+  if(typeof evaluateStudyAutoTick==='function') evaluateStudyAutoTick();
   buildDailyHabits();
   buildDailyTasks();
   buildChoresSection();
+  buildStudySection();
   buildEodSection();
   buildDoneSection();
   updateRing();
@@ -2251,6 +2275,8 @@ function toggleHab(habId){
   const cur = getHabitState(td,habId);
   const next = cur===null?'done':cur==='done'?'skipped':null;
   setHabitState(td,habId,next);
+  // If the user manually changes the study-attached habit, stop auto-managing it today
+  if(S.studyHabitId && habId===S.studyHabitId && S.studyAutoTicked && S.studyAutoTicked[td]===habId){ delete S.studyAutoTicked[td]; save(); }
   buildDailyHabits(); buildDoneSection(); updateRing(); updateHeroStats(); updateCompleteDayBtn();
 }
 
@@ -2810,6 +2836,12 @@ function updateHeroStats(){
   const choresDoneCount = choreIds.filter(id=>S.choreLog?.[td]?.[id]).length;
   const hch = document.getElementById('hchores');
   if(hch) hch.textContent = choresDoneCount+'/'+choreIds.length;
+
+  // Study KPI: completed / selected for today
+  const studyIds = (typeof syncTodaysStudies==='function') ? syncTodaysStudies() : (S.studyToday?.[td]||[]);
+  const studyDoneCount = studyIds.filter(id=>S.studyLog?.[td]?.[id]).length;
+  const hst = document.getElementById('hstudy');
+  if(hst) hst.textContent = studyDoneCount+'/'+studyIds.length;
 }
 
 function updateWksLeftTile(){
@@ -6529,6 +6561,22 @@ function checkDayReset(force){
 const MAX_CHORES = 3;
 let choreUI = { addOpen:false, editId:null, draftName:'', draftType:'daily', draftDays:[], draftDom:1, draftDate:'' };
 
+// Collapsible-panel state (accordion like "This week's focus"); default collapsed.
+let choresExpanded = (typeof localStorage!=='undefined') && localStorage.getItem('choresExpanded')==='true';
+let studyExpanded  = (typeof localStorage!=='undefined') && localStorage.getItem('studyExpanded')==='true';
+function toggleChoresPanel(){
+  choresExpanded = !choresExpanded;
+  try{ localStorage.setItem('choresExpanded', choresExpanded); }catch(e){}
+  const b=document.getElementById('chores-body'); if(b) b.style.display=choresExpanded?'block':'none';
+  const c=document.getElementById('chores-chev'); if(c) c.style.transform=choresExpanded?'rotate(180deg)':'none';
+}
+function toggleStudyPanel(){
+  studyExpanded = !studyExpanded;
+  try{ localStorage.setItem('studyExpanded', studyExpanded); }catch(e){}
+  const b=document.getElementById('study-body'); if(b) b.style.display=studyExpanded?'block':'none';
+  const c=document.getElementById('study-chev'); if(c) c.style.transform=studyExpanded?'rotate(180deg)':'none';
+}
+
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function escAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dy=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dy}`; }
@@ -6627,18 +6675,33 @@ function buildChoresSection(){
   }
 
   const canAdd = !locked && total < MAX_CHORES;
+  const exp = choresExpanded;
+  const countColor = (total>0 && done===total) ? 'var(--green)' : 'var(--blue)';
   el.innerHTML = `
-    <div class="sl" style="margin-top:14px;">🧹 Today's chores</div>
-    <div class="chore-card">
-      <div class="chore-hdr">
-        <div class="chore-count">${total ? `${done}/${total} done` : 'Up to 3 a day'}</div>
-        <button class="chore-manage-btn" onclick="openChoreLibrary()">☰ Manage</button>
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-top:5px;margin-bottom:9px;">
+      <div onclick="toggleChoresPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1rem;">🧹</span>
+          <div>
+            <div style="font-size:.82rem;font-weight:700;color:var(--tx);">Today's Chores</div>
+            <div style="font-size:.65rem;color:var(--tx3);">${total?`${total} selected`:'None yet — tap to add'}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:.72rem;font-weight:700;color:${countColor}">${done}/${total}</span>
+          <span id="chores-chev" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;transform:${exp?'rotate(180deg)':'none'};">▾</span>
+        </div>
       </div>
-      ${rows}
-      ${canAdd ? `<div class="chore-quick">
-        <input class="chore-quick-inp" id="chore-quick-inp" placeholder="Quick add a one-off for today…" onkeydown="if(event.key==='Enter')quickAddChore()"/>
-        <button class="chore-quick-btn" onclick="quickAddChore()">Add</button>
-      </div>` : (locked ? '' : `<div class="chore-full-note">That's 3 for today — keep it simple. Use ☰ Manage to swap one out.</div>`)}
+      <div id="chores-body" style="display:${exp?'block':'none'};padding:0 12px 12px;">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <button class="chore-manage-btn" onclick="event.stopPropagation();openChoreLibrary()">☰ Manage</button>
+        </div>
+        ${rows}
+        ${canAdd ? `<div class="chore-quick">
+          <input class="chore-quick-inp" id="chore-quick-inp" placeholder="Quick add a one-off for today…" onkeydown="if(event.key==='Enter')quickAddChore()"/>
+          <button class="chore-quick-btn" onclick="quickAddChore()">Add</button>
+        </div>` : (locked ? '' : `<div class="chore-full-note">That's 3 for today — keep it simple. Use ☰ Manage to swap one out.</div>`)}
+      </div>
     </div>`;
 }
 
@@ -6886,6 +6949,398 @@ function renderChoreLibrary(){
     <div class="chore-lib-sec-lbl">🔜 Coming up</div>
     ${upSec}
     <div class="chore-lib-sec-lbl">🗂️ All chores</div>
+    ${allSec}
+  `;
+}
+
+// ── STUDY (daily study planner) ─────────────────────────────────────────
+// Mirrors Chores (recurring library, max 3/day, KPI) and additionally can be
+// attached to one habit: when every study item for the day is done, that habit
+// is auto-ticked. Reuses the generic helpers: choreMatchesDate / nextChoreDate
+// / choreRecurLabel / friendlyDate / addDaysStr / escHtml / escAttr.
+const MAX_STUDIES = 3;
+let studyUI = { addOpen:false, editId:null, draftName:'', draftType:'daily', draftDays:[], draftDom:1, draftDate:'' };
+
+function syncTodaysStudies(){
+  const td = today();
+  if(!S.studyToday) S.studyToday = {};
+  if(!S.studyDismissed) S.studyDismissed = {};
+  if(!Array.isArray(S.studyToday[td])) S.studyToday[td] = [];
+  if(!Array.isArray(S.studyDismissed[td])) S.studyDismissed[td] = [];
+  S.studyToday[td] = S.studyToday[td].filter(id => S.studies.some(c=>c.id===id && !c.archived));
+  if(!S.completedDays.includes(td)){
+    const matches = S.studies.filter(c=>!c.archived && choreMatchesDate(c, td));
+    for(const c of matches){
+      if(S.studyToday[td].length >= MAX_STUDIES) break;
+      if(S.studyToday[td].includes(c.id)) continue;
+      if(S.studyDismissed[td].includes(c.id)) continue;
+      S.studyToday[td].push(c.id);
+    }
+  }
+  save();
+  return S.studyToday[td];
+}
+
+function pruneOneOffStudies(){
+  const td = today();
+  const referenced = new Set();
+  for(const d in (S.studyToday||{})) (S.studyToday[d]||[]).forEach(id=>referenced.add(id));
+  for(const d in (S.studyLog||{})) Object.keys(S.studyLog[d]||{}).forEach(id=>referenced.add(id));
+  const before = S.studies.length;
+  S.studies = S.studies.filter(c=>{
+    if(c.recur && c.recur.type==='once'){
+      return (c.recur.date && c.recur.date>=td) || referenced.has(c.id);
+    }
+    return true;
+  });
+  if(S.studies.length !== before) save();
+}
+
+function studyHabitName(){
+  if(!S.studyHabitId) return null;
+  const h = S.habits.find(h=>h.id===S.studyHabitId);
+  return h ? h.name + (h.archived?' (archived)':'') : null;
+}
+
+// Core: tick / untick the attached habit based on study completion.
+function evaluateStudyAutoTick(){
+  const td = today();
+  if(!S.studyAutoTicked) S.studyAutoTicked = {};
+  const habId = S.studyHabitId;
+  if(!habId) return;
+  const hab = S.habits.find(h=>h.id===habId && !h.archived);
+  if(!hab) return;
+  if(S.completedDays.includes(td)) return; // leave a locked day alone
+  const ids = syncTodaysStudies();
+  const allDone = ids.length>0 && ids.every(id=>S.studyLog?.[td]?.[id]);
+  const cur = getHabitState(td, habId);
+  if(allDone){
+    if(cur===null){ setHabitState(td, habId, 'done'); S.studyAutoTicked[td]=habId; save(); }
+  } else {
+    if(S.studyAutoTicked[td]===habId && cur==='done'){ setHabitState(td, habId, null); delete S.studyAutoTicked[td]; save(); }
+  }
+}
+
+function refreshDailyAfterStudy(){
+  buildDailyHabits(); buildDoneSection(); updateRing(); updateHeroStats(); updateCompleteDayBtn();
+}
+
+function buildStudySection(){
+  const el = document.getElementById('study-section'); if(!el) return;
+  const td = today();
+  pruneOneOffStudies();
+  const locked = S.completedDays.includes(td);
+  const ids = syncTodaysStudies();
+  const total = ids.length;
+  const done = ids.filter(id => S.studyLog?.[td]?.[id]).length;
+  const habName = studyHabitName();
+
+  let rows;
+  if(total === 0){
+    rows = `<div class="chore-empty">No study planned for today.<br>Add what you want to learn today.</div>`;
+  } else {
+    rows = ids.map(id=>{
+      const c = S.studies.find(c=>c.id===id); if(!c) return '';
+      const d = !!(S.studyLog?.[td]?.[id]);
+      return `<div class="chore-row${d?' done':''}">
+        <div class="chore-cbox" onclick="${locked?'':`toggleStudyDone('${id}')`}">✓</div>
+        <div class="chore-label" onclick="${locked?'':`toggleStudyDone('${id}')`}">${escHtml(c.name)}
+          <div class="chore-sub">${choreRecurLabel(c)}</div>
+        </div>
+        ${locked?'':`<button class="chore-x" onclick="removeStudyFromToday('${id}')" title="Remove from today">✕</button>`}
+      </div>`;
+    }).join('');
+  }
+
+  const canAdd = !locked && total < MAX_STUDIES;
+  const exp = studyExpanded;
+  const countColor = (total>0 && done===total) ? 'var(--green)' : 'var(--purple)';
+  const subtitle = habName ? `🔗 Ticks off ${escHtml(habName)}` : (total?`${total} selected`:'None yet — tap to add');
+  el.innerHTML = `
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:9px;">
+      <div onclick="toggleStudyPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1rem;">📚</span>
+          <div>
+            <div style="font-size:.82rem;font-weight:700;color:var(--tx);">Today's Study</div>
+            <div style="font-size:.65rem;color:var(--tx3);">${subtitle}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:.72rem;font-weight:700;color:${countColor}">${done}/${total}</span>
+          <span id="study-chev" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;transform:${exp?'rotate(180deg)':'none'};">▾</span>
+        </div>
+      </div>
+      <div id="study-body" style="display:${exp?'block':'none'};padding:0 12px 12px;">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <button class="chore-manage-btn" onclick="event.stopPropagation();openStudyLibrary()">☰ Manage</button>
+        </div>
+        ${rows}
+        ${canAdd ? `<div class="chore-quick">
+          <input class="chore-quick-inp" id="study-quick-inp" placeholder="Add what to study today…" onkeydown="if(event.key==='Enter')quickAddStudy()"/>
+          <button class="chore-quick-btn" onclick="quickAddStudy()">Add</button>
+        </div>` : (locked ? '' : `<div class="chore-full-note">That's 3 study items — focus. Use ☰ Manage to swap one out.</div>`)}
+      </div>
+    </div>`;
+}
+
+function toggleStudyDone(id){
+  const td = today();
+  if(S.completedDays.includes(td)) return;
+  if(!S.studyLog) S.studyLog={};
+  if(!S.studyLog[td]) S.studyLog[td]={};
+  if(S.studyLog[td][id]) delete S.studyLog[td][id]; else S.studyLog[td][id]=1;
+  save();
+  buildStudySection();
+  evaluateStudyAutoTick();
+  refreshDailyAfterStudy();
+}
+
+function quickAddStudy(){
+  const inp = document.getElementById('study-quick-inp'); if(!inp) return;
+  const name = inp.value.trim();
+  if(!name){ toast('Type a study topic first'); inp.focus(); return; }
+  const td = today();
+  if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
+  if(!S.studyToday[td]) S.studyToday[td]=[];
+  if(S.studyToday[td].length >= MAX_STUDIES){ toast('Max 3 study items for today'); return; }
+  const id = uid();
+  S.studies.push({ id, name, recur:{type:'once', date:td}, archived:false, createdAt:new Date().toISOString() });
+  S.studyToday[td].push(id);
+  save();
+  buildStudySection();
+  evaluateStudyAutoTick();
+  refreshDailyAfterStudy();
+  if(studyLibOpen()) renderStudyLibrary();
+  const again = document.getElementById('study-quick-inp');
+  if(again) again.focus();
+  toast('Added to today ✓');
+}
+
+function studyLibOpen(){
+  const m = document.getElementById('modal-main');
+  return m && m.classList.contains('open') && document.getElementById('modal-title')?.textContent.indexOf('Study')>-1;
+}
+
+function addStudyToToday(id){
+  const td = today();
+  if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
+  if(!S.studyToday[td]) S.studyToday[td]=[];
+  if(S.studyToday[td].includes(id)) return;
+  if(S.studyToday[td].length >= MAX_STUDIES){ toast('Max 3 study items for today'); return; }
+  S.studyToday[td].push(id);
+  if(S.studyDismissed[td]) S.studyDismissed[td] = S.studyDismissed[td].filter(x=>x!==id);
+  save();
+  buildStudySection();
+  evaluateStudyAutoTick();
+  refreshDailyAfterStudy();
+  if(studyLibOpen()) renderStudyLibrary();
+}
+
+function removeStudyFromToday(id){
+  const td = today();
+  if(!S.studyToday[td]) S.studyToday[td]=[];
+  S.studyToday[td] = S.studyToday[td].filter(x=>x!==id);
+  if(!S.studyDismissed[td]) S.studyDismissed[td]=[];
+  if(!S.studyDismissed[td].includes(id)) S.studyDismissed[td].push(id);
+  save();
+  buildStudySection();
+  evaluateStudyAutoTick();
+  refreshDailyAfterStudy();
+  if(studyLibOpen()) renderStudyLibrary();
+}
+
+function setStudyHabit(id){
+  const td = today();
+  const old = S.studyHabitId;
+  // Revert a previous auto-tick we own before switching away
+  if(S.studyAutoTicked && S.studyAutoTicked[td] && S.studyAutoTicked[td]===old){
+    if(getHabitState(td, old)==='done') setHabitState(td, old, null);
+    delete S.studyAutoTicked[td];
+  }
+  S.studyHabitId = id || null;
+  save();
+  evaluateStudyAutoTick();
+  buildStudySection();
+  if(studyLibOpen()) renderStudyLibrary();
+  refreshDailyAfterStudy();
+  toast(id ? 'Attached ✓' : 'Detached');
+}
+
+// ── Study library (modal) ──
+function openStudyLibrary(){ resetStudyDraft(); renderStudyLibrary(); openModal('modal-main'); }
+function resetStudyDraft(){ studyUI = { addOpen:false, editId:null, draftName:'', draftType:'daily', draftDays:[], draftDom:1, draftDate:'' }; }
+function openStudyForm(){ studyUI.addOpen=true; studyUI.editId=null; renderStudyLibrary(); }
+function cancelStudyForm(){ resetStudyDraft(); renderStudyLibrary(); }
+function studySetDraftType(t){ studyUI.draftType=t; renderStudyLibrary(); }
+function studyToggleDay(i){
+  if(!studyUI.draftDays) studyUI.draftDays=[];
+  if(studyUI.draftDays.includes(i)) studyUI.draftDays=studyUI.draftDays.filter(x=>x!==i);
+  else studyUI.draftDays.push(i);
+  renderStudyLibrary();
+}
+function startEditStudy(id){
+  const c = S.studies.find(c=>c.id===id); if(!c) return;
+  const r = c.recur||{type:'none'};
+  studyUI = { addOpen:true, editId:id, draftName:c.name, draftType:r.type||'none', draftDays:(r.days||[]).slice(), draftDom:r.dom||1, draftDate:r.date||today() };
+  renderStudyLibrary();
+}
+function deleteStudy(id){
+  const c = S.studies.find(c=>c.id===id);
+  if(!confirm('Delete study "'+(c?c.name:'')+'"? It will be removed everywhere.')) return;
+  S.studies = S.studies.filter(x=>x.id!==id);
+  for(const d in S.studyToday){ S.studyToday[d] = (S.studyToday[d]||[]).filter(x=>x!==id); }
+  save();
+  buildStudySection();
+  evaluateStudyAutoTick();
+  refreshDailyAfterStudy();
+  if(studyLibOpen()) renderStudyLibrary();
+  toast('Study deleted');
+}
+function submitStudy(){
+  const name = (studyUI.draftName||'').trim();
+  if(!name){ toast('Enter a study topic'); return; }
+  const t = studyUI.draftType||'daily';
+  let recur;
+  if(t==='weekly'){
+    if(!(studyUI.draftDays||[]).length){ toast('Pick at least one weekday'); return; }
+    recur = { type:'weekly', days: studyUI.draftDays.slice().sort((a,b)=>a-b) };
+  } else if(t==='monthly'){
+    recur = { type:'monthly', dom: Math.min(31, Math.max(1, parseInt(studyUI.draftDom)||1)) };
+  } else if(t==='once'){
+    recur = { type:'once', date: studyUI.draftDate || today() };
+  } else if(t==='none'){
+    recur = { type:'none' };
+  } else {
+    recur = { type:'daily' };
+  }
+  if(studyUI.editId){
+    const c = S.studies.find(c=>c.id===studyUI.editId);
+    if(c){ c.name=name; c.recur=recur; }
+    toast('Study updated ✓');
+  } else {
+    const newId = uid();
+    S.studies.push({ id:newId, name, recur, archived:false, createdAt:new Date().toISOString() });
+    const td = today();
+    if(recur.type==='once' && recur.date===td && !S.completedDays.includes(td)){
+      if(!S.studyToday[td]) S.studyToday[td]=[];
+      if(!S.studyToday[td].includes(newId) && S.studyToday[td].length < MAX_STUDIES){ S.studyToday[td].push(newId); }
+    }
+    toast('Study added ✓');
+  }
+  resetStudyDraft();
+  save();
+  buildStudySection();
+  evaluateStudyAutoTick();
+  refreshDailyAfterStudy();
+  renderStudyLibrary();
+}
+
+function studyFormHtml(){
+  const editing = !!studyUI.editId;
+  const t = studyUI.draftType||'daily';
+  const typeBtns = [['daily','Daily'],['weekly','Weekly'],['monthly','Monthly'],['once','One-off'],['none','Manual']]
+    .map(([v,l])=>`<div class="recur-type-btn${t===v?' on':''}" onclick="studySetDraftType('${v}')">${l}</div>`).join('');
+  let detail='';
+  if(t==='weekly'){
+    const order=[['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6],['Sun',0]];
+    detail=`<div class="igrp"><label class="ilbl">Repeat on</label>
+      <div class="day-chips">${order.map(([lbl,idx])=>`<div class="day-chip${(studyUI.draftDays||[]).includes(idx)?' on':''}" onclick="studyToggleDay(${idx})">${lbl[0]}</div>`).join('')}</div></div>`;
+  } else if(t==='monthly'){
+    detail=`<div class="igrp"><label class="ilbl">Day of month</label>
+      <input class="inp" type="number" min="1" max="31" value="${studyUI.draftDom||1}" oninput="studyUI.draftDom=this.value" style="max-width:110px;"/></div>`;
+  } else if(t==='once'){
+    detail=`<div class="igrp"><label class="ilbl">When</label>
+      <input class="inp" type="date" value="${studyUI.draftDate||today()}" oninput="studyUI.draftDate=this.value" style="max-width:170px;"/>
+      <div class="chore-sub" style="padding:3px 2px 0;">A one-time study item. Shows on that day only and clears itself afterwards.</div></div>`;
+  } else if(t==='none'){
+    detail=`<div class="chore-sub" style="padding:2px 2px 4px;">Manual items never auto-schedule — you add them to a day yourself.</div>`;
+  }
+  return `<div class="card" style="margin-bottom:8px;">
+    <div class="igrp"><label class="ilbl">${editing?'Edit study':'What to study'}</label>
+      <input class="inp" id="study-name-inp" placeholder="e.g. Anatomy — chapter 3" value="${escAttr(studyUI.draftName||'')}" oninput="studyUI.draftName=this.value"/></div>
+    <div class="igrp"><label class="ilbl">Schedule</label><div class="recur-type-row">${typeBtns}</div>${detail}</div>
+    <div class="brow">
+      <button class="btn btp bfu" onclick="submitStudy()">${editing?'Save changes':'Add study'}</button>
+      <button class="btn btgh" onclick="cancelStudyForm()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function studyLibRow(c, ctx, nextDate){
+  const td = today();
+  const onToday = (S.studyToday[td]||[]).includes(c.id);
+  const full = (S.studyToday[td]||[]).length >= MAX_STUDIES;
+  let meta = choreRecurLabel(c);
+  if(ctx==='upcoming' && nextDate) meta = 'Next: '+friendlyDate(nextDate);
+  let actions='';
+  if(ctx==='today'){
+    actions = `<button class="chore-icon-btn" onclick="removeStudyFromToday('${c.id}')" title="Remove from today">➖</button>`;
+  } else if(ctx==='upcoming'){
+    const dis = (full||onToday)?' disabled':'';
+    actions = `<button class="chore-icon-btn add${dis}" onclick="addStudyToToday('${c.id}')" title="Add to today">＋</button>`;
+  } else {
+    const dis = (full||onToday)?' disabled':'';
+    actions = `<button class="chore-icon-btn add${dis}" onclick="addStudyToToday('${c.id}')" title="${onToday?'On today':'Add to today'}">${onToday?'✓':'＋'}</button>
+      <button class="chore-icon-btn" onclick="startEditStudy('${c.id}')" title="Edit">✎</button>
+      <button class="chore-icon-btn" onclick="deleteStudy('${c.id}')" title="Delete">🗑</button>`;
+  }
+  return `<div class="chore-lib-row">
+    <div style="flex:1;min-width:0;">
+      <div class="chore-lib-name">${escHtml(c.name)}</div>
+      <div class="chore-lib-meta">${meta}${ctx==='all'&&onToday?' · <span style="color:var(--green);font-weight:700;">on today</span>':''}</div>
+    </div>
+    ${actions}
+  </div>`;
+}
+
+function renderStudyLibrary(){
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  if(titleEl) titleEl.textContent = '📚 Study';
+  if(!bodyEl) return;
+  const td = today();
+  const todayIds = syncTodaysStudies();
+  const active = S.studies.filter(c=>!c.archived);
+
+  // Attach-to-habit control
+  const habits = S.habits.filter(h=>!h.archived);
+  const opts = `<option value="">— None —</option>` +
+    habits.map(h=>`<option value="${h.id}"${S.studyHabitId===h.id?' selected':''}>${escHtml(h.name)}</option>`).join('');
+  const attachCard = `<div class="study-attach-card">
+    <div class="ilbl" style="margin-bottom:5px;color:var(--purple);">🔗 Attach to a habit</div>
+    <select class="inp" onchange="setStudyHabit(this.value)">${opts}</select>
+    <div class="study-attach-note">When every study item for the day is done, this habit is ticked off automatically. It stays attached until you change it here.</div>
+  </div>`;
+
+  const form = studyUI.addOpen ? studyFormHtml() : `<button class="btn btg bfu" onclick="openStudyForm()">＋ New study item</button>`;
+
+  const todaySec = todayIds.length
+    ? todayIds.map(id=>{ const c=active.find(c=>c.id===id); return c?studyLibRow(c,'today'):''; }).join('')
+    : `<div class="chore-lib-meta" style="padding:3px 2px;">Nothing scheduled today yet.</div>`;
+
+  const upcoming = active
+    .filter(c=>!todayIds.includes(c.id) && c.recur && c.recur.type && c.recur.type!=='none')
+    .map(c=>({ c, next: nextChoreDate(c, addDaysStr(td,1)) }))
+    .filter(x=>x.next)
+    .sort((a,b)=> a.next<b.next?-1:(a.next>b.next?1:0));
+  const upSec = upcoming.length
+    ? upcoming.map(x=>studyLibRow(x.c,'upcoming',x.next)).join('')
+    : `<div class="chore-lib-meta" style="padding:3px 2px;">No upcoming recurring study.</div>`;
+
+  const reusable = active.filter(c=>!(c.recur && c.recur.type==='once'));
+  const allSec = reusable.length
+    ? reusable.slice().sort((a,b)=> a.name.toLowerCase()<b.name.toLowerCase()?-1:1).map(c=>studyLibRow(c,'all')).join('')
+    : `<div class="chore-lib-meta" style="padding:3px 2px;">No saved study items yet — add a recurring one above.</div>`;
+
+  bodyEl.innerHTML = `
+    ${attachCard}
+    ${form}
+    <div class="chore-lib-sec-lbl">📌 Scheduled today (${todayIds.length}/${MAX_STUDIES})</div>
+    ${todaySec}
+    <div class="chore-lib-sec-lbl">🔜 Coming up</div>
+    ${upSec}
+    <div class="chore-lib-sec-lbl">🗂️ All study items</div>
     ${allSec}
   `;
 }
