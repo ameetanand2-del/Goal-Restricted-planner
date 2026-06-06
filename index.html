@@ -379,6 +379,18 @@ select.inp{appearance:none;}
 .study-attach{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:.6rem;font-weight:700;background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.2);}
 .study-attach-note{margin-top:6px;font-size:.64rem;color:var(--tx3);line-height:1.4;}
 .study-attach-card{background:linear-gradient(135deg,rgba(168,85,247,.07),rgba(168,85,247,.02));border:1px solid rgba(168,85,247,.22);border-radius:var(--r);padding:11px;margin-bottom:8px;}
+/* topbar notes button + self-notes */
+.topbar-notes-btn{width:30px;height:30px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur);display:flex;align-items:center;justify-content:center;font-size:.92rem;position:relative;}
+.topbar-notes-btn:active{background:var(--bg3);}
+.topbar-notes-btn .nb-dot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--a);border:1.5px solid var(--bg);}
+.note-card{border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:8px;overflow:hidden;background:var(--sur);}
+.note-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;cursor:pointer;user-select:none;}
+.note-head:active{background:var(--bg3);}
+.note-label-text{font-size:.84rem;font-weight:700;color:var(--tx);}
+.note-preview{font-size:.64rem;color:var(--tx3);margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
+.note-body-wrap{padding:0 12px 12px;}
+.note-textarea{width:100%;min-height:42vh;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r2);padding:11px;font-size:.85rem;line-height:1.6;color:var(--tx);outline:none;resize:vertical;font-family:inherit;}
+.note-textarea:focus{border-color:var(--a);}
 </style>
 </head>
 <body>
@@ -790,6 +802,9 @@ def('studyToday',{});    // {date:[studyId,...]} — study items surfaced for th
 def('studyDismissed',{});// {date:[studyId,...]}
 def('studyHabitId',null);// persistent habit this study block is attached to (or null)
 def('studyAutoTicked',{});// {date: habitId} — the habit study auto-completed that day (so it can be reverted)
+def('selfNotes',[          // notes-to-self, openable from the topbar; bodies can be long
+  {id:'note_both', label:'When tired or unmotivated, read this', body:'', updatedAt:null}
+]);
 
 const APP_VERSION = 'v40';
 
@@ -2860,9 +2875,12 @@ function updateWksLeftTile(){
 function updateTopbarRight(){
   const el=document.getElementById('topbar-right'); if(!el) return;
   const c=getActiveCycle();
-  el.innerHTML=c
+  const hasNotes=(S.selfNotes||[]).some(n=>(n.body||'').trim());
+  const notesBtn=`<button class="topbar-notes-btn" onclick="openNotes()" title="Notes to self" aria-label="Notes to self">📝${hasNotes?'<span class="nb-dot"></span>':''}</button>`;
+  const cycleEl=c
     ? `<div class="cycle-badge active">🔒 Cycle active · ${c.endDate}</div>`
     : `<div class="cycle-badge" onclick="goTab('settings',document.getElementById('nb-settings'));switchSettingsTab('cycle',document.getElementById('st-cycle'))" style="cursor:pointer;">+ Start cycle</div>`;
+  el.innerHTML=notesBtn+cycleEl;
 }
 
 function allHabitsAddressed(){
@@ -7345,8 +7363,102 @@ function renderStudyLibrary(){
   `;
 }
 
+// ── NOTES TO SELF ───────────────────────────────────────────────────────
+// Openable from the topbar. Each note has a short "trigger" line and a body
+// that can be as long as a full page. Defaults seed the situational prompts.
+function openNotes(){ renderNotes(); openModal('modal-main'); }
+
+function notePreview(body){
+  const t=(body||'').replace(/\s+/g,' ').trim();
+  return t ? escHtml(t.slice(0,90)) : 'Tap to write a note';
+}
+
+function renderNotes(openId){
+  const titleEl=document.getElementById('modal-title');
+  const bodyEl=document.getElementById('modal-body');
+  if(titleEl) titleEl.textContent='📝 Notes to self';
+  if(!bodyEl) return;
+  if(!Array.isArray(S.selfNotes)) S.selfNotes=[];
+  const cards=S.selfNotes.map(n=>{
+    const open = (n.id===openId);
+    return `<div class="note-card">
+      <div class="note-head" onclick="toggleNote('${n.id}')">
+        <div style="flex:1;min-width:0;">
+          <div class="note-label-text">${escHtml(n.label||'Untitled note')}</div>
+          <div class="note-preview">${notePreview(n.body)}</div>
+        </div>
+        <span id="note-chev-${n.id}" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;transform:${open?'rotate(180deg)':'none'};">▾</span>
+      </div>
+      <div id="note-body-${n.id}" class="note-body-wrap" style="display:${open?'block':'none'};">
+        <div class="igrp"><label class="ilbl">Trigger · short line</label>
+          <input class="inp" id="note-label-${n.id}" value="${escAttr(n.label||'')}" placeholder="e.g. When tired, read this"/></div>
+        <div class="igrp"><label class="ilbl">Note</label>
+          <textarea class="note-textarea" id="note-text-${n.id}" placeholder="Write your note — as long as you like…">${escHtml(n.body||'')}</textarea></div>
+        <div class="brow">
+          <button class="btn btp bfu" onclick="saveNote('${n.id}')">Save</button>
+          <button class="btn btr" onclick="deleteNote('${n.id}')">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  bodyEl.innerHTML = `
+    <div style="font-size:.7rem;color:var(--tx2);margin-bottom:10px;line-height:1.5;">Leave yourself notes to read when you need them. Tap a line to write or edit.</div>
+    ${cards || `<div class="chore-lib-meta" style="padding:3px 2px;">No notes yet.</div>`}
+    <button class="btn btg bfu" style="margin-top:6px;" onclick="addNote()">＋ Add note</button>`;
+}
+
+function toggleNote(id){
+  const b=document.getElementById('note-body-'+id);
+  const c=document.getElementById('note-chev-'+id);
+  if(!b) return;
+  const opening = b.style.display==='none';
+  b.style.display = opening ? 'block' : 'none';
+  if(c) c.style.transform = opening ? 'rotate(180deg)' : 'none';
+}
+
+function saveNote(id){
+  const n=(S.selfNotes||[]).find(n=>n.id===id); if(!n) return;
+  const lab=document.getElementById('note-label-'+id);
+  const txt=document.getElementById('note-text-'+id);
+  if(lab) n.label=lab.value.trim();
+  if(txt) n.body=txt.value;
+  n.updatedAt=new Date().toISOString();
+  save();
+  updateTopbarRight();
+  renderNotes(id); // keep this note open, refresh its preview/title
+  toast('Note saved ✓');
+}
+
+function addNote(){
+  if(!Array.isArray(S.selfNotes)) S.selfNotes=[];
+  const id=uid();
+  S.selfNotes.push({id,label:'',body:'',updatedAt:null});
+  save();
+  renderNotes(id);
+}
+
+function deleteNote(id){
+  if(!confirm('Delete this note?')) return;
+  S.selfNotes=(S.selfNotes||[]).filter(n=>n.id!==id);
+  save();
+  updateTopbarRight();
+  renderNotes();
+  toast('Note deleted');
+}
+
 function init(){
   migrateV37();
+  // One-time: collapse the old 3 seeded notes down to just the combined one,
+  // but only remove the extras if they were never written in.
+  if(!S.selfNotesMigratedV1){
+    if(Array.isArray(S.selfNotes)){
+      S.selfNotes = S.selfNotes.filter(n =>
+        !((n.id==='note_tired' || n.id==='note_unmotivated') && !(n.body||'').trim())
+      );
+    }
+    S.selfNotesMigratedV1 = true;
+    save();
+  }
   // Initialise lastActiveDate if not set
   if(!S.lastActiveDate) { S.lastActiveDate = today(); save(); }
   checkDayReset(false);
