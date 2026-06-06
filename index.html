@@ -327,6 +327,49 @@ select.inp{appearance:none;}
 /* Milestone badge */
 .milestone-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:.58rem;font-weight:700;background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.2);}
 .milestone-note{background:rgba(168,85,247,.05);border:1px solid rgba(168,85,247,.15);border-radius:var(--r2);padding:10px;margin-top:8px;font-size:.72rem;color:var(--tx2);line-height:1.5;}
+
+/* ── CHORES ─────────────────────────────────────────────────────────────── */
+.chore-card{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:11px;margin-bottom:9px;}
+.chore-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.chore-manage-btn{white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 11px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:5px;}
+.chore-manage-btn:active{background:var(--bg3);}
+.chore-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:var(--r2);background:var(--bg);border:1px solid var(--bdr);margin-bottom:5px;}
+.chore-row.done{background:rgba(34,197,94,.05);border-color:rgba(34,197,94,.18);}
+.chore-row.done .chore-label{color:var(--tx3);text-decoration:line-through;}
+.chore-cbox{width:19px;height:19px;border-radius:5px;border:1.5px solid var(--bdr2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-size:.62rem;color:transparent;cursor:pointer;}
+.chore-row.done .chore-cbox{background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 0 8px rgba(34,197,94,.25);}
+.chore-label{font-size:.83rem;font-weight:500;flex:1;line-height:1.3;cursor:pointer;}
+.chore-sub{font-size:.6rem;color:var(--tx3);margin-top:2px;}
+.chore-x{font-size:.85rem;color:var(--tx3);padding:3px 6px;flex-shrink:0;line-height:1;}
+.chore-x:active{color:var(--red);}
+.chore-empty{text-align:center;padding:14px 10px;color:var(--tx3);font-size:.74rem;line-height:1.5;}
+.chore-add-inline{width:100%;margin-top:3px;padding:9px;border-radius:var(--r2);border:1px dashed var(--bdr2);background:transparent;color:var(--tx2);font-size:.75rem;font-weight:600;}
+.chore-add-inline:active{background:var(--sur);}
+.chore-count{font-size:.6rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;}
+/* chore library */
+.chore-lib-sec-lbl{font-size:.61rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin:16px 0 7px;}
+.chore-lib-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:var(--r2);background:var(--sur);border:1px solid var(--bdr);margin-bottom:5px;}
+.chore-lib-name{font-size:.82rem;font-weight:600;line-height:1.3;}
+.chore-lib-meta{font-size:.6rem;color:var(--tx3);margin-top:2px;}
+.chore-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:.58rem;font-weight:700;background:rgba(20,184,166,.1);color:var(--teal);border:1px solid rgba(20,184,166,.2);}
+.chore-icon-btn{width:30px;height:30px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;color:var(--tx2);}
+.chore-icon-btn:active{background:var(--bg3);}
+.chore-icon-btn.add{color:var(--a);border-color:rgba(232,98,42,.25);background:rgba(232,98,42,.06);}
+.chore-icon-btn.disabled{opacity:.4;pointer-events:none;}
+.day-chips{display:flex;gap:5px;flex-wrap:wrap;}
+.day-chip{width:32px;height:32px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);font-size:.66rem;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
+.day-chip.on{background:var(--a);color:#fff;border-color:var(--a);}
+.recur-type-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px;}
+.recur-type-btn{flex:1 1 28%;min-width:64px;padding:8px 6px;border-radius:var(--r2);border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);font-size:.68rem;font-weight:600;text-align:center;cursor:pointer;transition:all .15s;}
+.recur-type-btn.on{background:var(--a);color:#fff;border-color:var(--a);}
+/* quick one-off add on daily card */
+.chore-quick{display:flex;gap:7px;margin-top:7px;}
+.chore-quick-inp{flex:1;min-width:0;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r2);padding:9px 11px;font-size:.8rem;color:var(--tx);outline:none;}
+.chore-quick-inp:focus{border-color:var(--a);}
+.chore-quick-inp::placeholder{color:var(--tx3);}
+.chore-quick-btn{padding:9px 15px;border-radius:var(--r2);background:linear-gradient(135deg,var(--a),var(--a2));color:#fff;font-size:.78rem;font-weight:700;flex-shrink:0;}
+.chore-quick-btn:active{transform:scale(.97);}
+.chore-full-note{margin-top:7px;text-align:center;font-size:.66rem;color:var(--tx3);}
 </style>
 </head>
 <body>
@@ -403,9 +446,13 @@ select.inp{appearance:none;}
     <div id="daily-content-locked" style="opacity:0.4;pointer-events:none;">
 
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-    <div class="sg3" style="flex:1;margin:0;">
+    <div class="sg4" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
       <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0</div><div class="slb">Tasks</div></div>
+      <div class="stile" onclick="document.getElementById('chores-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
+        <div class="sv" id="hchores" style="color:var(--blue)">0/0</div>
+        <div class="slb">Chores</div>
+      </div>
       <div class="stile" onclick="scrollToWeeklyGoals()" style="cursor:pointer;">
         <div class="sv" id="hweekly" style="color:var(--a2)">0/0</div>
         <div class="slb">Weekly</div>
@@ -455,6 +502,9 @@ select.inp{appearance:none;}
     </div>
     <div id="daily-tasks-list"></div>
   </div>
+
+  <!-- Today's chores (recurring, max 3) -->
+  <div id="chores-section"></div>
 
   <!-- Reflection questions (configured in Settings > Prefs) -->
   <div id="eod-section"></div>
@@ -714,6 +764,10 @@ def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in seq
 def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt}]}
 def('restrictionOverrideUntil',null); // ISO timestamp when override expires
 def('goalsFilterMode','all'); // 'all' | 'goals' | 'projects' | 'habits'
+def('chores',[]);        // [{id,name,recur:{type:'none'|'daily'|'weekly'|'monthly',days:[0-6],dom:1-31},archived,createdAt}]
+def('choreLog',{});      // {date:{choreId:1}} — completion per day
+def('choreToday',{});    // {date:[choreId,...]} — chores surfaced for that day (max 3)
+def('choreDismissed',{});// {date:[choreId,...]} — chores user removed from that day (so they aren't re-suggested)
 
 const APP_VERSION = 'v40';
 
@@ -897,6 +951,7 @@ function buildDailyView(){
   buildWeeklyGoalsSection();
   buildDailyHabits();
   buildDailyTasks();
+  buildChoresSection();
   buildEodSection();
   buildDoneSection();
   updateRing();
@@ -2749,6 +2804,12 @@ function updateHeroStats(){
   // Tasks count (show remaining or total)
   const tasksRemaining = tasksTotal - tasksDone;
   document.getElementById('htasks').textContent = tasksRemaining > 0 ? tasksRemaining : (tasksTotal > 0 ? '✓' : '0');
+
+  // Chores KPI: completed / selected for today
+  const choreIds = (typeof syncTodaysChores==='function') ? syncTodaysChores() : (S.choreToday?.[td]||[]);
+  const choresDoneCount = choreIds.filter(id=>S.choreLog?.[td]?.[id]).length;
+  const hch = document.getElementById('hchores');
+  if(hch) hch.textContent = choresDoneCount+'/'+choreIds.length;
 }
 
 function updateWksLeftTile(){
@@ -6459,6 +6520,374 @@ function checkDayReset(force){
   save();
   buildDailyView();
   toast('New day started 🌅');
+}
+
+// ── CHORES ──────────────────────────────────────────────────────────────
+// A lightweight "do these few things and I'm done" list on the Daily tab.
+// Max 3 surfaced per day. Chores can recur daily / weekly / monthly and
+// auto-seed the day; the user can also pick from the full chore library.
+const MAX_CHORES = 3;
+let choreUI = { addOpen:false, editId:null, draftName:'', draftType:'daily', draftDays:[], draftDom:1, draftDate:'' };
+
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dy=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dy}`; }
+function addDaysStr(ds,n){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+n); return fmtDate(d); }
+function friendlyDate(ds){
+  const td=today();
+  if(ds===td) return 'Today';
+  if(ds===addDaysStr(td,1)) return 'Tomorrow';
+  const d=new Date(ds+'T00:00:00');
+  return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+}
+
+function choreMatchesDate(ch, dateStr){
+  const r = ch.recur || {type:'none'};
+  if(r.type==='daily') return true;
+  if(r.type==='once') return r.date===dateStr;
+  const d = new Date(dateStr+'T00:00:00');
+  if(r.type==='weekly') return (r.days||[]).includes(d.getDay());
+  if(r.type==='monthly'){
+    const lastDom = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    const target = Math.min(r.dom||1, lastDom); // if 31 in a short month, fire on last day
+    return d.getDate() === target;
+  }
+  return false; // 'none' = manual only
+}
+
+function nextChoreDate(ch, fromDateStr){
+  const r = ch.recur || {type:'none'};
+  if(r.type==='none') return null;
+  let ds = fromDateStr;
+  for(let i=0;i<400;i++){ if(choreMatchesDate(ch, ds)) return ds; ds = addDaysStr(ds,1); }
+  return null;
+}
+
+function choreRecurLabel(ch){
+  const r = ch.recur || {type:'none'};
+  if(r.type==='daily') return 'Every day';
+  if(r.type==='once') return 'One-off · '+(r.date?friendlyDate(r.date):'today');
+  if(r.type==='weekly'){
+    const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const ds=(r.days||[]).slice().sort((a,b)=>a-b).map(i=>names[i]);
+    return ds.length ? ('Weekly · '+ds.join(', ')) : 'Weekly';
+  }
+  if(r.type==='monthly') return 'Monthly · day '+(r.dom||1);
+  return 'Manual';
+}
+
+// Surfaced chores for today (max 3). Auto-seeds from recurring matches,
+// respects removals (dismissed) and the daily cap.
+function syncTodaysChores(){
+  const td = today();
+  if(!S.choreToday) S.choreToday = {};
+  if(!S.choreDismissed) S.choreDismissed = {};
+  if(!Array.isArray(S.choreToday[td])) S.choreToday[td] = [];
+  if(!Array.isArray(S.choreDismissed[td])) S.choreDismissed[td] = [];
+  // Drop deleted / archived chores
+  S.choreToday[td] = S.choreToday[td].filter(id => S.chores.some(c=>c.id===id && !c.archived));
+  // Auto-add recurring matches (only while the day is still open)
+  if(!S.completedDays.includes(td)){
+    const matches = S.chores.filter(c=>!c.archived && choreMatchesDate(c, td));
+    for(const c of matches){
+      if(S.choreToday[td].length >= MAX_CHORES) break;
+      if(S.choreToday[td].includes(c.id)) continue;
+      if(S.choreDismissed[td].includes(c.id)) continue;
+      S.choreToday[td].push(c.id);
+    }
+  }
+  save();
+  return S.choreToday[td];
+}
+
+function buildChoresSection(){
+  const el = document.getElementById('chores-section'); if(!el) return;
+  const td = today();
+  pruneOneOffs();
+  const locked = S.completedDays.includes(td);
+  const ids = syncTodaysChores();
+  const total = ids.length;
+  const done = ids.filter(id => S.choreLog?.[td]?.[id]).length;
+
+  let rows;
+  if(total === 0){
+    rows = `<div class="chore-empty">No chores set for today.<br>Pick a few small things and call it done.</div>`;
+  } else {
+    rows = ids.map(id=>{
+      const c = S.chores.find(c=>c.id===id); if(!c) return '';
+      const d = !!(S.choreLog?.[td]?.[id]);
+      return `<div class="chore-row${d?' done':''}">
+        <div class="chore-cbox" onclick="${locked?'':`toggleChoreDone('${id}')`}">✓</div>
+        <div class="chore-label" onclick="${locked?'':`toggleChoreDone('${id}')`}">${escHtml(c.name)}
+          <div class="chore-sub">${choreRecurLabel(c)}</div>
+        </div>
+        ${locked?'':`<button class="chore-x" onclick="removeChoreFromToday('${id}')" title="Remove from today">✕</button>`}
+      </div>`;
+    }).join('');
+  }
+
+  const canAdd = !locked && total < MAX_CHORES;
+  el.innerHTML = `
+    <div class="sl" style="margin-top:14px;">🧹 Today's chores</div>
+    <div class="chore-card">
+      <div class="chore-hdr">
+        <div class="chore-count">${total ? `${done}/${total} done` : 'Up to 3 a day'}</div>
+        <button class="chore-manage-btn" onclick="openChoreLibrary()">☰ Manage</button>
+      </div>
+      ${rows}
+      ${canAdd ? `<div class="chore-quick">
+        <input class="chore-quick-inp" id="chore-quick-inp" placeholder="Quick add a one-off for today…" onkeydown="if(event.key==='Enter')quickAddChore()"/>
+        <button class="chore-quick-btn" onclick="quickAddChore()">Add</button>
+      </div>` : (locked ? '' : `<div class="chore-full-note">That's 3 for today — keep it simple. Use ☰ Manage to swap one out.</div>`)}
+    </div>`;
+}
+
+// Quick ad-hoc one-off chore, straight onto today (not a recurring chore).
+function quickAddChore(){
+  const inp = document.getElementById('chore-quick-inp'); if(!inp) return;
+  const name = inp.value.trim();
+  if(!name){ toast('Type a chore first'); inp.focus(); return; }
+  const td = today();
+  if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
+  if(!S.choreToday[td]) S.choreToday[td]=[];
+  if(S.choreToday[td].length >= MAX_CHORES){ toast('Max 3 chores for today'); return; }
+  const id = uid();
+  S.chores.push({ id, name, recur:{type:'once', date:td}, archived:false, createdAt:new Date().toISOString() });
+  S.choreToday[td].push(id);
+  save();
+  buildChoresSection();
+  updateHeroStats();
+  if(choreLibOpen()) renderChoreLibrary();
+  const again = document.getElementById('chore-quick-inp');
+  if(again) again.focus();
+  toast('Added for today ✓');
+}
+
+// Remove stale one-off chores from past days that nothing references anymore,
+// so the chore pool doesn't fill up with finished one-offs.
+function pruneOneOffs(){
+  const td = today();
+  const referenced = new Set();
+  for(const d in (S.choreToday||{})) (S.choreToday[d]||[]).forEach(id=>referenced.add(id));
+  for(const d in (S.choreLog||{})) Object.keys(S.choreLog[d]||{}).forEach(id=>referenced.add(id));
+  const before = S.chores.length;
+  S.chores = S.chores.filter(c=>{
+    if(c.recur && c.recur.type==='once'){
+      const stillRelevant = (c.recur.date && c.recur.date>=td) || referenced.has(c.id);
+      return stillRelevant;
+    }
+    return true;
+  });
+  if(S.chores.length !== before) save();
+}
+
+function toggleChoreDone(id){
+  const td = today();
+  if(S.completedDays.includes(td)) return;
+  if(!S.choreLog) S.choreLog={};
+  if(!S.choreLog[td]) S.choreLog[td]={};
+  if(S.choreLog[td][id]) delete S.choreLog[td][id]; else S.choreLog[td][id]=1;
+  save();
+  buildChoresSection();
+  updateHeroStats();
+}
+
+function choreLibOpen(){
+  const m = document.getElementById('modal-main');
+  return m && m.classList.contains('open') && document.getElementById('modal-title')?.textContent.indexOf('Chores')>-1;
+}
+
+function addChoreToToday(id){
+  const td = today();
+  if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
+  if(!S.choreToday[td]) S.choreToday[td]=[];
+  if(S.choreToday[td].includes(id)) return;
+  if(S.choreToday[td].length >= MAX_CHORES){ toast('Max 3 chores for today'); return; }
+  S.choreToday[td].push(id);
+  if(S.choreDismissed[td]) S.choreDismissed[td] = S.choreDismissed[td].filter(x=>x!==id);
+  save();
+  buildChoresSection();
+  updateHeroStats();
+  if(choreLibOpen()) renderChoreLibrary();
+}
+
+function removeChoreFromToday(id){
+  const td = today();
+  if(!S.choreToday[td]) S.choreToday[td]=[];
+  S.choreToday[td] = S.choreToday[td].filter(x=>x!==id);
+  if(!S.choreDismissed[td]) S.choreDismissed[td]=[];
+  if(!S.choreDismissed[td].includes(id)) S.choreDismissed[td].push(id);
+  save();
+  buildChoresSection();
+  updateHeroStats();
+  if(choreLibOpen()) renderChoreLibrary();
+}
+
+// ── Chore library (modal) ──
+function openChoreLibrary(){ resetChoreDraft(); renderChoreLibrary(); openModal('modal-main'); }
+
+function resetChoreDraft(){ choreUI = { addOpen:false, editId:null, draftName:'', draftType:'daily', draftDays:[], draftDom:1, draftDate:'' }; }
+function openChoreForm(){ choreUI.addOpen=true; choreUI.editId=null; renderChoreLibrary(); }
+function cancelChoreForm(){ resetChoreDraft(); renderChoreLibrary(); }
+function choreSetDraftType(t){ choreUI.draftType=t; renderChoreLibrary(); }
+function choreToggleDay(i){
+  if(!choreUI.draftDays) choreUI.draftDays=[];
+  if(choreUI.draftDays.includes(i)) choreUI.draftDays=choreUI.draftDays.filter(x=>x!==i);
+  else choreUI.draftDays.push(i);
+  renderChoreLibrary();
+}
+function startEditChore(id){
+  const c = S.chores.find(c=>c.id===id); if(!c) return;
+  const r = c.recur||{type:'none'};
+  choreUI = { addOpen:true, editId:id, draftName:c.name, draftType:r.type||'none', draftDays:(r.days||[]).slice(), draftDom:r.dom||1, draftDate:r.date||today() };
+  renderChoreLibrary();
+}
+function deleteChore(id){
+  const c = S.chores.find(c=>c.id===id);
+  if(!confirm('Delete chore "'+(c?c.name:'')+'"? It will be removed everywhere.')) return;
+  S.chores = S.chores.filter(x=>x.id!==id);
+  for(const d in S.choreToday){ S.choreToday[d] = (S.choreToday[d]||[]).filter(x=>x!==id); }
+  save();
+  buildChoresSection();
+  updateHeroStats();
+  if(choreLibOpen()) renderChoreLibrary();
+  toast('Chore deleted');
+}
+function submitChore(){
+  const name = (choreUI.draftName||'').trim();
+  if(!name){ toast('Enter a chore name'); return; }
+  const t = choreUI.draftType||'daily';
+  let recur;
+  if(t==='weekly'){
+    if(!(choreUI.draftDays||[]).length){ toast('Pick at least one weekday'); return; }
+    recur = { type:'weekly', days: choreUI.draftDays.slice().sort((a,b)=>a-b) };
+  } else if(t==='monthly'){
+    recur = { type:'monthly', dom: Math.min(31, Math.max(1, parseInt(choreUI.draftDom)||1)) };
+  } else if(t==='once'){
+    recur = { type:'once', date: choreUI.draftDate || today() };
+  } else if(t==='none'){
+    recur = { type:'none' };
+  } else {
+    recur = { type:'daily' };
+  }
+  if(choreUI.editId){
+    const c = S.chores.find(c=>c.id===choreUI.editId);
+    if(c){ c.name=name; c.recur=recur; }
+    toast('Chore updated ✓');
+  } else {
+    const newId = uid();
+    S.chores.push({ id:newId, name, recur, archived:false, createdAt:new Date().toISOString() });
+    // A one-off for today (with room) drops straight onto today's list
+    const td = today();
+    if(recur.type==='once' && recur.date===td && !S.completedDays.includes(td)){
+      if(!S.choreToday[td]) S.choreToday[td]=[];
+      if(!S.choreToday[td].includes(newId) && S.choreToday[td].length < MAX_CHORES){ S.choreToday[td].push(newId); }
+    }
+    toast('Chore added ✓');
+  }
+  resetChoreDraft();
+  save();
+  buildChoresSection();
+  updateHeroStats();
+  renderChoreLibrary();
+}
+
+function choreFormHtml(){
+  const editing = !!choreUI.editId;
+  const t = choreUI.draftType||'daily';
+  const typeBtns = [['daily','Daily'],['weekly','Weekly'],['monthly','Monthly'],['once','One-off'],['none','Manual']]
+    .map(([v,l])=>`<div class="recur-type-btn${t===v?' on':''}" onclick="choreSetDraftType('${v}')">${l}</div>`).join('');
+  let detail='';
+  if(t==='weekly'){
+    const order=[['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6],['Sun',0]];
+    detail=`<div class="igrp"><label class="ilbl">Repeat on</label>
+      <div class="day-chips">${order.map(([lbl,idx])=>`<div class="day-chip${(choreUI.draftDays||[]).includes(idx)?' on':''}" onclick="choreToggleDay(${idx})">${lbl[0]}</div>`).join('')}</div></div>`;
+  } else if(t==='monthly'){
+    detail=`<div class="igrp"><label class="ilbl">Day of month</label>
+      <input class="inp" type="number" min="1" max="31" value="${choreUI.draftDom||1}" oninput="choreUI.draftDom=this.value" style="max-width:110px;"/></div>`;
+  } else if(t==='once'){
+    detail=`<div class="igrp"><label class="ilbl">When</label>
+      <input class="inp" type="date" value="${choreUI.draftDate||today()}" oninput="choreUI.draftDate=this.value" style="max-width:170px;"/>
+      <div class="chore-sub" style="padding:3px 2px 0;">A one-time chore. It shows on that day only and clears itself afterwards.</div></div>`;
+  } else if(t==='none'){
+    detail=`<div class="chore-sub" style="padding:2px 2px 4px;">Manual chores never auto-schedule — you add them to a day yourself.</div>`;
+  }
+  return `<div class="card" style="margin-bottom:8px;">
+    <div class="igrp"><label class="ilbl">${editing?'Edit chore':'Chore name'}</label>
+      <input class="inp" id="chore-name-inp" placeholder="e.g. Wash the dishes" value="${escAttr(choreUI.draftName||'')}" oninput="choreUI.draftName=this.value"/></div>
+    <div class="igrp"><label class="ilbl">Schedule</label><div class="recur-type-row">${typeBtns}</div>${detail}</div>
+    <div class="brow">
+      <button class="btn btp bfu" onclick="submitChore()">${editing?'Save changes':'Add chore'}</button>
+      <button class="btn btgh" onclick="cancelChoreForm()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function choreLibRow(c, ctx, nextDate){
+  const td = today();
+  const onToday = (S.choreToday[td]||[]).includes(c.id);
+  const full = (S.choreToday[td]||[]).length >= MAX_CHORES;
+  let meta = choreRecurLabel(c);
+  if(ctx==='upcoming' && nextDate) meta = 'Next: '+friendlyDate(nextDate);
+  let actions='';
+  if(ctx==='today'){
+    actions = `<button class="chore-icon-btn" onclick="removeChoreFromToday('${c.id}')" title="Remove from today">➖</button>`;
+  } else if(ctx==='upcoming'){
+    const dis = (full||onToday)?' disabled':'';
+    actions = `<button class="chore-icon-btn add${dis}" onclick="addChoreToToday('${c.id}')" title="Add to today">＋</button>`;
+  } else { // all
+    const dis = (full||onToday)?' disabled':'';
+    actions = `<button class="chore-icon-btn add${dis}" onclick="addChoreToToday('${c.id}')" title="${onToday?'On today':'Add to today'}">${onToday?'✓':'＋'}</button>
+      <button class="chore-icon-btn" onclick="startEditChore('${c.id}')" title="Edit">✎</button>
+      <button class="chore-icon-btn" onclick="deleteChore('${c.id}')" title="Delete">🗑</button>`;
+  }
+  return `<div class="chore-lib-row">
+    <div style="flex:1;min-width:0;">
+      <div class="chore-lib-name">${escHtml(c.name)}</div>
+      <div class="chore-lib-meta">${meta}${ctx==='all'&&onToday?' · <span style="color:var(--green);font-weight:700;">on today</span>':''}</div>
+    </div>
+    ${actions}
+  </div>`;
+}
+
+function renderChoreLibrary(){
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  if(titleEl) titleEl.textContent = '🧹 Chores';
+  if(!bodyEl) return;
+  const td = today();
+  const todayIds = syncTodaysChores();
+  const active = S.chores.filter(c=>!c.archived);
+
+  const form = choreUI.addOpen ? choreFormHtml() : `<button class="btn btg bfu" onclick="openChoreForm()">＋ New chore</button>`;
+
+  const todaySec = todayIds.length
+    ? todayIds.map(id=>{ const c=active.find(c=>c.id===id); return c?choreLibRow(c,'today'):''; }).join('')
+    : `<div class="chore-lib-meta" style="padding:3px 2px;">Nothing scheduled today yet.</div>`;
+
+  const upcoming = active
+    .filter(c=>!todayIds.includes(c.id) && c.recur && c.recur.type && c.recur.type!=='none')
+    .map(c=>({ c, next: nextChoreDate(c, addDaysStr(td,1)) }))
+    .filter(x=>x.next)
+    .sort((a,b)=> a.next<b.next?-1:(a.next>b.next?1:0));
+  const upSec = upcoming.length
+    ? upcoming.map(x=>choreLibRow(x.c,'upcoming',x.next)).join('')
+    : `<div class="chore-lib-meta" style="padding:3px 2px;">No upcoming recurring chores.</div>`;
+
+  const reusable = active.filter(c=>!(c.recur && c.recur.type==='once'));
+  const allSec = reusable.length
+    ? reusable.slice().sort((a,b)=> a.name.toLowerCase()<b.name.toLowerCase()?-1:1).map(c=>choreLibRow(c,'all')).join('')
+    : `<div class="chore-lib-meta" style="padding:3px 2px;">No saved chores yet — add a recurring one above.</div>`;
+
+  bodyEl.innerHTML = `
+    ${form}
+    <div class="chore-lib-sec-lbl">📌 Scheduled today (${todayIds.length}/${MAX_CHORES})</div>
+    ${todaySec}
+    <div class="chore-lib-sec-lbl">🔜 Coming up</div>
+    ${upSec}
+    <div class="chore-lib-sec-lbl">🗂️ All chores</div>
+    ${allSec}
+  `;
 }
 
 function init(){
