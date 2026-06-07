@@ -400,6 +400,12 @@ select.inp{appearance:none;}
 .score-track{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden;}
 .score-fill{height:100%;border-radius:99px;transition:width .4s;}
 .score-delta{font-size:.74rem;margin-top:4px;line-height:1.4;}
+/* time-of-day tagging */
+.tod-chip{font-size:.82rem;padding:3px 5px;flex-shrink:0;line-height:1;background:transparent;border:none;cursor:pointer;}
+.tod-chip.empty{opacity:.3;}
+.tod-pick{display:flex;align-items:center;gap:11px;width:100%;padding:12px;margin-bottom:7px;border-radius:var(--r2);border:1px solid var(--bdr);background:var(--sur);color:var(--tx);font-size:.85rem;font-weight:600;cursor:pointer;}
+.tod-pick.on{border-color:var(--a);background:rgba(232,98,42,.06);}
+.tod-pick:active{background:var(--bg3);}
 </style>
 </head>
 <body>
@@ -979,8 +985,9 @@ function buildDailyView(){
   // Sync grouping toggle labels with persisted state
   const hIcon = document.getElementById('daily-habit-group-icon');
   const hLabel = document.getElementById('daily-habit-group-label');
-  if(hIcon) hIcon.textContent = dailyHabitGrouped ? '▤' : '▥';
-  if(hLabel) hLabel.textContent = dailyHabitGrouped ? 'Grouped' : 'Sequence';
+  const hm = habitModeMeta(dailyHabitMode);
+  if(hIcon) hIcon.textContent = hm.icon;
+  if(hLabel) hLabel.textContent = hm.label;
   const tIcon = document.getElementById('daily-task-group-icon');
   const tLabel = document.getElementById('daily-task-group-label');
   if(tIcon) tIcon.textContent = dailyTaskGrouped ? '▤' : '▥';
@@ -2061,6 +2068,40 @@ function showModal(title, content, buttons){
   document.body.appendChild(modal);
 }
 
+// ── TIME-OF-DAY tagging for habits ──────────────────────────────────────
+const TOD_BUCKETS = [
+  {key:'morning', label:'Morning', emoji:'🌅', color:'#f59e0b'},
+  {key:'allday',  label:'All day', emoji:'☀️', color:'#22c55e'},
+  {key:'evening', label:'Evening', emoji:'🌆', color:'#f97316'},
+  {key:'night',   label:'Night',   emoji:'🌙', color:'#6366f1'},
+  {key:'none',    label:'None',    emoji:'•',  color:'#888888'}
+];
+function todChipContent(tod){ const b=TOD_BUCKETS.find(x=>x.key===tod); return b && b.key!=='none' ? b.emoji : '🕘'; }
+function habitModeMeta(m){
+  if(m==='timeofday') return {icon:'🕘', label:'Time of day'};
+  if(m==='sequence')  return {icon:'▥', label:'Sequence'};
+  return {icon:'▤', label:'Grouped'};
+}
+function openTodPicker(habId){
+  const h=S.habits.find(x=>x.id===habId); if(!h) return;
+  const cur=h.tod||'none';
+  const titleEl=document.getElementById('modal-title'); if(titleEl) titleEl.textContent='🕘 Tag time of day';
+  const bodyEl=document.getElementById('modal-body'); if(!bodyEl) return;
+  bodyEl.innerHTML = `<div style="font-size:.74rem;color:var(--tx2);margin-bottom:12px;line-height:1.5;">When do you usually do "<b style="color:var(--tx);">${escHtml(h.name)}</b>"? This groups it under the Time-of-day view.</div>`
+    + TOD_BUCKETS.map(b=>`<button class="tod-pick${cur===b.key?' on':''}" onclick="setHabitTod('${habId}','${b.key}')">
+        <span style="font-size:1.05rem;">${b.emoji}</span><span>${b.label}</span>${cur===b.key?'<span style="margin-left:auto;color:var(--green);font-weight:700;">✓</span>':''}
+      </button>`).join('');
+  openModal('modal-main');
+}
+function setHabitTod(habId, key){
+  const h=S.habits.find(x=>x.id===habId); if(!h) return;
+  if(key==='none') delete h.tod; else h.tod=key;
+  save();
+  closeModal('modal-main');
+  buildDailyHabits();
+  toast('Tagged ✓');
+}
+
 function buildDailyHabits(){
   const el = document.getElementById('daily-habits-list'); if(!el) return;
   const allHabits = getActiveHabits();
@@ -2095,7 +2136,30 @@ function buildDailyHabits(){
     return;
   }
 
-  if(dailyHabitGrouped){
+  if(dailyHabitMode==='timeofday'){
+    // TIME-OF-DAY MODE - group habits by their tagged bucket
+    const byKey={};
+    habits.forEach(h=>{ const k=(h.tod && TOD_BUCKETS.some(b=>b.key===h.tod && b.key!=='none'))?h.tod:'none'; (byKey[k]=byKey[k]||[]).push(h); });
+    let gHtml='<div id="daily-habit-tod">'; let gc=0;
+    TOD_BUCKETS.forEach(b=>{
+      const list=byKey[b.key]; if(!list||!list.length) return;
+      const skipped=list.filter(h=>getHabitState(td,h.id)==='skipped').length;
+      const bodyId='htod-'+gc;
+      const rows=list.map(h=>renderHabitRow(h,td,locked)).join('');
+      gHtml+=`<div class="habit-group-card" style="margin-bottom:8px;border:1px solid ${b.color}33;border-radius:var(--r2);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${b.color}14;user-select:none;" onclick="toggleSection('${bodyId}')">
+          <span style="font-size:.95rem;">${b.emoji}</span>
+          <div style="flex:1;font-size:.78rem;font-weight:700;">${b.label}</div>
+          <span style="font-size:.67rem;font-weight:700;color:${b.color};">${list.length} left${skipped?' · '+skipped+' skipped':''}</span>
+          <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+        </div>
+        <div id="${bodyId}" style="display:block;"><div class="cks">${rows}</div></div>
+      </div>`;
+      gc++;
+    });
+    gHtml+='</div>';
+    el.innerHTML=gHtml;
+  } else if(dailyHabitMode==='grouped'){
     // GROUPED MODE - Group habits by project/goal
     const groups = {};
     habits.forEach(h=>{
@@ -2292,6 +2356,7 @@ function renderHabitRow(h, date, locked){
       </div>`:''}
     </div>
     ${h.hint?`<button onclick="event.stopPropagation();showHabitHint('${h.id}')" style="font-size:.75rem;color:var(--tx3);padding:3px 5px;flex-shrink:0;">ℹ️</button>`:''}
+    <button onclick="event.stopPropagation();openTodPicker('${h.id}')" class="tod-chip${TOD_BUCKETS.some(b=>b.key===h.tod&&b.key!=='none')?'':' empty'}" title="Tag time of day">${todChipContent(h.tod)}</button>
   </div>`;
 }
 
@@ -2312,15 +2377,17 @@ function saveReason(habId){
   save(); toast('Reason saved ✓');
 }
 
-let dailyHabitGrouped = localStorage.getItem('dailyHabitGrouped') !== 'false';
+let dailyHabitMode = localStorage.getItem('dailyHabitMode') || (localStorage.getItem('dailyHabitGrouped')==='false' ? 'sequence' : 'grouped');
 
 function toggleDailyHabitGrouping(){
-  dailyHabitGrouped = !dailyHabitGrouped;
-  localStorage.setItem('dailyHabitGrouped', dailyHabitGrouped);
+  const order=['grouped','sequence','timeofday'];
+  dailyHabitMode = order[(order.indexOf(dailyHabitMode)+1)%order.length];
+  localStorage.setItem('dailyHabitMode', dailyHabitMode);
+  const m=habitModeMeta(dailyHabitMode);
   const icon = document.getElementById('daily-habit-group-icon');
   const label = document.getElementById('daily-habit-group-label');
-  if(icon) icon.textContent = dailyHabitGrouped ? '▤' : '▥';
-  if(label) label.textContent = dailyHabitGrouped ? 'Grouped' : 'Sequence';
+  if(icon) icon.textContent = m.icon;
+  if(label) label.textContent = m.label;
   buildDailyHabits();
 }
 
