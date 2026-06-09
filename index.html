@@ -521,9 +521,6 @@ select.inp{appearance:none;}
   <!-- Weekly Goals Section -->
   <div id="weekly-goals-section"></div>
 
-  <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
-  <div id="study-section"></div>
-
   <!-- Today's habits label -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:8px;">
     <div class="sl" style="margin:0;">✨ Today's habits</div>
@@ -545,6 +542,9 @@ select.inp{appearance:none;}
     </div>
     <div id="daily-tasks-list"></div>
   </div>
+
+  <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
+  <div id="study-section"></div>
 
   <!-- Today's chores (recurring, max 3) -->
   <div id="chores-section"></div>
@@ -804,17 +804,19 @@ def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'acti
 def('milestones',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'reached'|'acknowledged',note,reachedAt,acknowledgedAt,createdAt}]
 def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit groups in daily view
 def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in sequence mode
-def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt}]}
+def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt, cat}]}
 def('restrictionOverrideUntil',null); // ISO timestamp when override expires
 def('goalsFilterMode','all'); // 'all' | 'goals' | 'projects' | 'habits'
 def('chores',[]);        // [{id,name,recur:{type:'none'|'daily'|'weekly'|'monthly',days:[0-6],dom:1-31},archived,createdAt}]
 def('choreLog',{});      // {date:{choreId:1}} — completion per day
 def('choreToday',{});    // {date:[choreId,...]} — chores surfaced for that day (max 3)
 def('choreDismissed',{});// {date:[choreId,...]} — chores user removed from that day (so they aren't re-suggested)
+def('choreHidden',{});   // {date:[choreId,...]} — completed chores cleared from view when adding a new batch
 def('studies',[]);       // [{id,name,recur:{...},archived,createdAt}] — mirrors chores
 def('studyLog',{});      // {date:{studyId:1}} — completion per day
 def('studyToday',{});    // {date:[studyId,...]} — study items surfaced for that day (max 3)
 def('studyDismissed',{});// {date:[studyId,...]}
+def('studyHidden',{});   // {date:[studyId,...]} — completed study cleared from view when adding a new batch
 def('studyHabitId',null);// persistent habit this study block is attached to (or null)
 def('studyAutoTicked',{});// {date: habitId} — the habit study auto-completed that day (so it can be reverted)
 def('selfNotes',[          // notes-to-self, openable from the topbar; bodies can be long
@@ -1591,6 +1593,59 @@ function isStartOfWeek(){
   return d.getDay() === 1; // Monday
 }
 
+const WEEKLY_CATS = [ {key:'personal', label:'Personal', emoji:'🏠'}, {key:'job', label:'Job', emoji:'💼'} ];
+let pendingWeeklyCat = 'personal';
+function weeklyCatActiveCount(weekKey, catKey){ return getWeeklyGoals(weekKey).filter(g=>g.cat===catKey && !g.cleared && g.status==='active').length; }
+function clearResolvedWeekly(weekKey, catKey){ getWeeklyGoals(weekKey).forEach(g=>{ if(g.cat===catKey && g.status!=='active') g.cleared=true; }); }
+function toggleWeeklyCat(wgId){
+  const wg = getWeeklyGoals(getCurrentWeekKey()).find(g=>g.id===wgId); if(!wg) return;
+  wg.cat = wg.cat==='job' ? 'personal' : 'job';
+  save(); buildWeeklyGoalsSection(); toast(wg.cat==='job'?'→ Job':'→ Personal');
+}
+function reorderWeeklyCat(weekKey, catKey, orderedIds){
+  const arr = S.weeklyGoals[weekKey]||[];
+  const inCat = orderedIds.map(id=>arr.find(g=>g.id===id)).filter(Boolean);
+  let i=0;
+  S.weeklyGoals[weekKey] = arr.map(g=> (g.cat===catKey && !g.cleared) ? inCat[i++] : g );
+  save(); buildWeeklyGoalsSection();
+}
+function weeklyGoalRowHtml(wg){
+  const name = getWeeklyGoalName(wg);
+  const color = getWeeklyGoalColor(wg);
+  const typeLabel = wg.type.charAt(0).toUpperCase() + wg.type.slice(1);
+  const isCompleted = wg.status === 'completed';
+  const isNotCompleted = wg.status === 'notcompleted';
+  const isMoved = wg.status === 'moved';
+  let statusIcon='', statusStyle='', statusBorder='var(--bdr)';
+  if(isCompleted){ statusIcon='✓ '; statusStyle='color:var(--tx3);opacity:.55;'; }
+  else if(isNotCompleted){ statusIcon='✗ '; statusStyle='color:var(--red);text-decoration:line-through;opacity:.5;'; statusBorder='rgba(239,68,68,.15)'; }
+  else if(isMoved){ statusIcon='→ '; statusStyle='color:var(--blue);opacity:.55;'; statusBorder='rgba(59,130,246,.15)'; }
+  const catEmoji = wg.cat==='job' ? '💼' : '🏠';
+  return `<div class="wg-swipe drag-item" data-wgid="${wg.id}" data-id="${wg.id}">
+    <div class="wg-swipe-actions">
+      ${wg.status === 'active' ? `
+        <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','completed');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);font-size:.68rem;font-weight:600;white-space:nowrap;">✓ Done</button>
+        <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','notcompleted');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18);font-size:.68rem;font-weight:600;white-space:nowrap;">✗ Cancel</button>
+        <button onclick="event.stopPropagation();moveWeeklyGoalToNextWeek('${wg.id}');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(59,130,246,.08);color:var(--blue);border:1px solid rgba(59,130,246,.18);font-size:.68rem;font-weight:600;white-space:nowrap;">→ Move</button>
+      ` : `
+        <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','active');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);font-size:.68rem;font-weight:600;">↺ Undo</button>
+      `}
+      <button onclick="event.stopPropagation();removeWeeklyGoal('${wg.id}')" style="padding:8px 8px;border-radius:8px;background:rgba(239,68,68,.06);color:var(--red);border:1px solid rgba(239,68,68,.15);font-size:.68rem;">×</button>
+    </div>
+    <div class="wg-swipe-content" style="border:1px solid ${statusBorder};border-radius:var(--r2);${statusStyle}${isCompleted?'background:var(--bg2);':''}">
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:3px 2px 0 0;flex-shrink:0;cursor:grab;">☰</span>
+        <div style="width:6px;height:6px;border-radius:50%;background:${isCompleted?'var(--tx3)':color};flex-shrink:0;margin-top:5px;${isCompleted?'opacity:.4;':''}"></div>
+        <div style="flex:1;min-width:0;">
+          <div class="wg-name" style="${isCompleted?'text-decoration:line-through;':''}">${statusIcon}${name}</div>
+          <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${typeLabel}${isCompleted?' · Done':''}</div>
+        </div>
+        <button onclick="event.stopPropagation();toggleWeeklyCat('${wg.id}')" title="Switch Personal / Job" style="font-size:.82rem;background:transparent;border:none;padding:3px 4px;flex-shrink:0;cursor:pointer;">${catEmoji}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function buildWeeklyGoalsSection(){
   const el = document.getElementById('weekly-goals-section'); if(!el) return;
   const weekKey = getCurrentWeekKey();
@@ -1601,127 +1656,84 @@ function buildWeeklyGoalsSection(){
   const completed = goals.filter(g => g.status === 'completed').length;
   const active = goals.filter(g => g.status === 'active').length;
   
-  // Update KPI
+  // Update KPI (combined across both categories)
   const kpi = document.getElementById('hweekly');
   if(kpi) kpi.textContent = `${completed}/${total}`;
-  
+
+  const anyVisible = goals.some(g=>!g.cleared);
+
   // Format week range
   const weekStart = new Date(weekKey + 'T12:00:00');
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
   const weekLabel = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`;
-  
-  // Check if we need to show prompts
+
+  // Prompts
   const showEndOfWeekPrompt = isEndOfWeek() && active > 0;
   const showStartOfWeekPrompt = isStartOfWeek() && total === 0;
-  
-  const bodyId = 'weekly-goals-body';
-  
-  let html = `<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:14px;">
-    <div onclick="toggleSection('${bodyId}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:1rem;">🎯</span>
-        <div>
-          <div style="font-size:.82rem;font-weight:700;color:var(--tx);">This Week's Focus</div>
-          <div style="font-size:.65rem;color:var(--tx3);">${weekLabel}</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:.72rem;font-weight:700;color:${completed===total && total>0?'var(--green)':'var(--a2)'}">${completed}/${total}</span>
-        <span style="font-size:.62rem;color:var(--tx3);">▾</span>
-      </div>
-    </div>
-    <div id="${bodyId}" style="display:none;padding:0 12px 12px;">`;
-  
-  // Add button at top of expanded section
-  html += `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-    <button onclick="event.stopPropagation();openAddWeeklyGoal()" style="font-size:.65rem;color:var(--a);padding:4px 10px;border-radius:99px;background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.2);">+ Add Goal</button>
-  </div>`;
-  
-  // Show prompt for start of week
+
+  if(!anyVisible && !showEmptyCats && !showStartOfWeekPrompt && !showEndOfWeekPrompt){ el.innerHTML=''; return; }
+
+  let html = '';
+
   if(showStartOfWeekPrompt){
-    html += `<div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:var(--r2);padding:12px;text-align:center;margin-bottom:10px;">
+    html += `<div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:var(--r2);padding:12px;text-align:center;margin-bottom:9px;">
       <div style="font-size:.85rem;margin-bottom:6px;">📅 New week started!</div>
       <div style="font-size:.72rem;color:var(--tx3);margin-bottom:10px;">Set your focus for this week</div>
-      <button onclick="event.stopPropagation();openAddWeeklyGoal()" class="btn btp" style="font-size:.75rem;">+ Add Weekly Goal</button>
+      <button onclick="event.stopPropagation();openAddWeeklyGoal('personal')" class="btn btp" style="font-size:.75rem;">+ Add Weekly Goal</button>
     </div>`;
   }
-  
-  // Show end of week review prompt
   if(showEndOfWeekPrompt){
-    html += `<div style="background:rgba(232,98,42,.06);border:1px solid rgba(232,98,42,.15);border-radius:var(--r2);padding:12px;margin-bottom:10px;text-align:center;">
+    html += `<div style="background:rgba(232,98,42,.06);border:1px solid rgba(232,98,42,.15);border-radius:var(--r2);padding:12px;margin-bottom:9px;text-align:center;">
       <div style="font-size:.85rem;margin-bottom:4px;">📊 Week ending!</div>
-      <div style="font-size:.72rem;color:var(--tx3);">Review your weekly goals below and mark them as completed or move to next week.</div>
+      <div style="font-size:.72rem;color:var(--tx3);">Review your weekly focus and mark items done or move them to next week.</div>
     </div>`;
   }
-  
-  // Render goals list
-  if(goals.length > 0){
-    // Sort: active first, then completed/notcompleted/moved at bottom
-    const sorted = [...goals].sort((a,b) => {
-      const aActive = a.status === 'active' ? 0 : 1;
-      const bActive = b.status === 'active' ? 0 : 1;
-      return aActive - bActive;
-    });
-    
-    sorted.forEach(wg => {
-      const name = getWeeklyGoalName(wg);
-      const color = getWeeklyGoalColor(wg);
-      const typeLabel = wg.type.charAt(0).toUpperCase() + wg.type.slice(1);
-      const isCompleted = wg.status === 'completed';
-      const isNotCompleted = wg.status === 'notcompleted';
-      const isMoved = wg.status === 'moved';
-      
-      let statusIcon = '';
-      let statusStyle = '';
-      let statusBorder = 'var(--bdr)';
-      if(isCompleted){
-        statusIcon = '✓ ';
-        statusStyle = 'color:var(--tx3);opacity:.55;';
-        statusBorder = 'var(--bdr)';
-      } else if(isNotCompleted){
-        statusIcon = '✗ ';
-        statusStyle = 'color:var(--red);text-decoration:line-through;opacity:.5;';
-        statusBorder = 'rgba(239,68,68,.15)';
-      } else if(isMoved){
-        statusIcon = '→ ';
-        statusStyle = 'color:var(--blue);opacity:.55;';
-        statusBorder = 'rgba(59,130,246,.15)';
-      }
-      
-      html += `<div class="wg-swipe" data-wgid="${wg.id}">
-        <div class="wg-swipe-actions">
-          ${wg.status === 'active' ? `
-            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','completed');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);font-size:.68rem;font-weight:600;white-space:nowrap;">✓ Done</button>
-            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','notcompleted');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18);font-size:.68rem;font-weight:600;white-space:nowrap;">✗ Cancel</button>
-            <button onclick="event.stopPropagation();moveWeeklyGoalToNextWeek('${wg.id}');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:rgba(59,130,246,.08);color:var(--blue);border:1px solid rgba(59,130,246,.18);font-size:.68rem;font-weight:600;white-space:nowrap;">→ Move</button>
-          ` : `
-            <button onclick="event.stopPropagation();setWeeklyGoalStatus('${wg.id}','active');closeWgSwipe(this)" style="padding:8px 10px;border-radius:8px;background:var(--bg);color:var(--tx3);border:1px solid var(--bdr);font-size:.68rem;font-weight:600;">↺ Undo</button>
-          `}
-          <button onclick="event.stopPropagation();removeWeeklyGoal('${wg.id}')" style="padding:8px 8px;border-radius:8px;background:rgba(239,68,68,.06);color:var(--red);border:1px solid rgba(239,68,68,.15);font-size:.68rem;">×</button>
-        </div>
-        <div class="wg-swipe-content" style="border:1px solid ${statusBorder};border-radius:var(--r2);${statusStyle}${isCompleted?'background:var(--bg2);':''}">
-          <div style="display:flex;align-items:flex-start;gap:10px;">
-            <div style="width:6px;height:6px;border-radius:50%;background:${isCompleted?'var(--tx3)':color};flex-shrink:0;margin-top:5px;${isCompleted?'opacity:.4;':''}"></div>
-            <div style="flex:1;min-width:0;">
-              <div class="wg-name" style="${isCompleted?'text-decoration:line-through;':''}">${statusIcon}${name}</div>
-              <div style="font-size:.62rem;color:var(--tx3);margin-top:2px;">${typeLabel}${isCompleted?' · Done':''}</div>
-            </div>
+
+  // One standalone collapsible card PER category (Personal, then Job)
+  WEEKLY_CATS.forEach(cat => {
+    const list = goals.filter(g => g.cat===cat.key && !g.cleared);
+    if(!list.length && !showEmptyCats) return; // hide an empty category card when toggle is off
+    const catTotal = list.length;
+    const catCompleted = list.filter(g => g.status==='completed').length;
+    const sorted = [...list].sort((a,b) => (a.status==='active'?0:1) - (b.status==='active'?0:1));
+    const bodyId = 'weekly-body-'+cat.key;
+    const exp = weeklyExpanded[cat.key];
+    const cc = (catTotal>0 && catCompleted===catTotal) ? 'var(--green)' : 'var(--a2)';
+    html += `<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:9px;">
+      <div onclick="toggleWeeklyPanel('${cat.key}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1rem;">${cat.emoji}</span>
+          <div>
+            <div style="font-size:.82rem;font-weight:700;color:var(--tx);">This Week's Focus · ${cat.label}</div>
+            <div style="font-size:.65rem;color:var(--tx3);">${weekLabel}</div>
           </div>
         </div>
-      </div>`;
-    });
-  } else if(!showStartOfWeekPrompt){
-    html += `<div style="text-align:center;padding:15px;color:var(--tx3);font-size:.75rem;">
-      No weekly goals set. Tap "+ Add Goal" to set your focus for this week.
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:.72rem;font-weight:700;color:${cc}">${catCompleted}/${catTotal}</span>
+          <span id="wk-chev-${cat.key}" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;transform:${exp?'rotate(180deg)':'none'};">▾</span>
+        </div>
+      </div>
+      <div id="${bodyId}" style="display:${exp?'block':'none'};padding:0 12px 12px;">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <button onclick="event.stopPropagation();openAddWeeklyGoal('${cat.key}')" style="font-size:.62rem;color:var(--a);padding:3px 10px;border-radius:99px;background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.2);">+ Add</button>
+        </div>
+        <div class="cks" id="wgcat-${cat.key}">`;
+    if(!list.length) html += `<div class="chore-empty" style="padding:10px;">Nothing here yet — tap + Add.</div>`;
+    else sorted.forEach(wg => { html += weeklyGoalRowHtml(wg); });
+    html += `</div>
+      </div>
     </div>`;
-  }
-  
-  html += `</div></div>`;
+  });
+
   el.innerHTML = html;
-  
-  // Wire swipe gestures for weekly goals
+
+  // Wire swipe gestures + per-category drag reorder
   wireWgSwipeGestures();
+  WEEKLY_CATS.forEach(cat => {
+    const sorted = goals.filter(g=>g.cat===cat.key && !g.cleared).sort((a,b)=>(a.status==='active'?0:1)-(b.status==='active'?0:1));
+    if(sorted.length>1) makeDraggable('#wgcat-'+cat.key, ()=>sorted, ()=>reorderWeeklyCat(getCurrentWeekKey(), cat.key, sorted.map(g=>g.id)));
+  });
 }
 
 function closeWgSwipe(el){
@@ -1804,7 +1816,13 @@ function wireWgSwipeGestures(){
   });
 }
 
-function openAddWeeklyGoal(){
+function openAddWeeklyGoal(cat){
+  pendingWeeklyCat = (cat==='job') ? 'job' : 'personal';
+  const wkKey = getCurrentWeekKey();
+  if(weeklyCatActiveCount(wkKey, pendingWeeklyCat) >= 3){
+    showAlert('Finish your current 3 first', `You already have 3 active ${pendingWeeklyCat} focus goals. Complete or clear some, then you can add more.`);
+    return;
+  }
   // Build structured picker: Goals → Projects → Tasks hierarchy
   const goals = S.goals.filter(g => !g.archived && !g.future);
   const projects = S.projects.filter(p => !p.archived && p.status !== 'abandoned');
@@ -1957,13 +1975,20 @@ function addWeeklyGoal(type, targetId){
     toast('Already added');
     return;
   }
+  const cat = pendingWeeklyCat || 'personal';
+  if(weeklyCatActiveCount(weekKey, cat) >= 3){
+    showAlert('Finish your current 3 first', `You already have 3 active ${cat} focus goals. Complete or clear some, then you can add more.`);
+    return;
+  }
+  clearResolvedWeekly(weekKey, cat); // tuck away finished goals in this category when starting a new batch
   
   S.weeklyGoals[weekKey].push({
     id: uid(),
     type,
     targetId,
     status: 'active',
-    addedAt: today()
+    addedAt: today(),
+    cat
   });
   save();
   
@@ -2034,13 +2059,14 @@ function removeWeeklyGoal(wgId){
 
 function scrollToWeeklyGoals(){
   const el = document.getElementById('weekly-goals-section');
-  const body = document.getElementById('weekly-goals-body');
-  if(el) {
+  if(el){
     el.scrollIntoView({behavior:'smooth', block:'center'});
-    // Open the section if closed
-    if(body && body.style.display === 'none'){
-      body.style.display = 'block';
-    }
+    ['personal','job'].forEach(k=>{
+      weeklyExpanded[k] = true;
+      try{ localStorage.setItem(k==='job'?'wkExpJob':'wkExpPersonal', true); }catch(e){}
+      const b=document.getElementById('weekly-body-'+k); if(b) b.style.display='block';
+      const c=document.getElementById('wk-chev-'+k); if(c) c.style.transform='rotate(180deg)';
+    });
   }
 }
 
@@ -2070,10 +2096,10 @@ function showModal(title, content, buttons){
 
 // ── TIME-OF-DAY tagging for habits ──────────────────────────────────────
 const TOD_BUCKETS = [
-  {key:'morning', label:'Morning', emoji:'🌅', color:'#f59e0b'},
+  {key:'morning', label:'Morning routine', emoji:'🌅', color:'#f59e0b'},
   {key:'allday',  label:'All day', emoji:'☀️', color:'#22c55e'},
   {key:'evening', label:'Evening', emoji:'🌆', color:'#f97316'},
-  {key:'night',   label:'Night',   emoji:'🌙', color:'#6366f1'},
+  {key:'night',   label:'Night routine',   emoji:'🌙', color:'#6366f1'},
   {key:'none',    label:'None',    emoji:'•',  color:'#888888'}
 ];
 function todChipContent(tod){ const b=TOD_BUCKETS.find(x=>x.key===tod); return b && b.key!=='none' ? b.emoji : '🕘'; }
@@ -2141,24 +2167,32 @@ function buildDailyHabits(){
     const byKey={};
     habits.forEach(h=>{ const k=(h.tod && TOD_BUCKETS.some(b=>b.key===h.tod && b.key!=='none'))?h.tod:'none'; (byKey[k]=byKey[k]||[]).push(h); });
     let gHtml='<div id="daily-habit-tod">'; let gc=0;
+    const todArrays=[];
     TOD_BUCKETS.forEach(b=>{
-      const list=byKey[b.key]; if(!list||!list.length) return;
+      const list=byKey[b.key]||[];
+      if(!list.length && (!showEmptyCats || b.key==='none')) return; // hide empty buckets unless showing; never show empty None
+      ensureOrder(list);
+      todArrays.push(list);
       const skipped=list.filter(h=>getHabitState(td,h.id)==='skipped').length;
-      const bodyId='htod-'+gc;
-      const rows=list.map(h=>renderHabitRow(h,td,locked)).join('');
+      const collapsed = !!todCollapsed[b.key];
+      const rows=list.length ? list.map(h=>renderHabitRow(h,td,locked)).join('') : `<div class="chore-empty" style="padding:12px;">Nothing tagged ${b.label.toLowerCase()}.</div>`;
       gHtml+=`<div class="habit-group-card" style="margin-bottom:8px;border:1px solid ${b.color}33;border-radius:var(--r2);overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${b.color}14;user-select:none;" onclick="toggleSection('${bodyId}')">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${b.color}14;user-select:none;" onclick="toggleTodBucket('${b.key}')">
           <span style="font-size:.95rem;">${b.emoji}</span>
           <div style="flex:1;font-size:.78rem;font-weight:700;">${b.label}</div>
           <span style="font-size:.67rem;font-weight:700;color:${b.color};">${list.length} left${skipped?' · '+skipped+' skipped':''}</span>
-          <span style="font-size:.62rem;color:var(--tx3);">▾</span>
+          <span id="htod-chev-${b.key}" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;transform:${collapsed?'none':'rotate(180deg)'};">▾</span>
         </div>
-        <div id="${bodyId}" style="display:block;"><div class="cks">${rows}</div></div>
+        <div id="htod-body-${b.key}" style="display:${collapsed?'none':'block'};"><div class="cks" id="htod-inner-${gc}">${rows}</div></div>
       </div>`;
       gc++;
     });
     gHtml+='</div>';
     el.innerHTML=gHtml;
+    if(!locked){
+      const persist=()=>{ S.dailyHabitOrder = todArrays.flatMap(a=>a.map(h=>h.id)); save(); buildDailyHabits(); updateRing(); };
+      todArrays.forEach((arr,i)=>{ if(arr.length) makeDraggable('#htod-inner-'+i, ()=>arr, persist); });
+    }
   } else if(dailyHabitMode==='grouped'){
     // GROUPED MODE - Group habits by project/goal
     const groups = {};
@@ -2409,7 +2443,14 @@ function buildDailyTasks(){
   let tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t));
   const el = document.getElementById('daily-tasks-wrap');
   const list = document.getElementById('daily-tasks-list');
-  if(!tasks.length){ if(el) el.style.display='none'; return; }
+  if(!tasks.length){
+    if(showEmptyCats){
+      if(el) el.style.display='';
+      if(list) list.innerHTML = `<div class="chore-empty" style="padding:12px;">No tasks due today.</div>`;
+      return;
+    }
+    if(el) el.style.display='none'; return;
+  }
   if(el) el.style.display='';
   
   // Apply saved order
@@ -2954,11 +2995,12 @@ function updateTopbarRight(){
   const c=getActiveCycle();
   const hasNotes=(S.selfNotes||[]).some(n=>(n.body||'').trim());
   const scoreBtn=`<button class="topbar-notes-btn" onclick="openScorePanel(false)" title="Weekly score" aria-label="Weekly score">📊</button>`;
+  const emptyBtn=`<button class="topbar-notes-btn" id="empty-cats-btn" onclick="toggleEmptyCats()" title="Show/hide empty categories" aria-label="Show or hide empty categories">${showEmptyCats?'👁':'🙈'}</button>`;
   const notesBtn=`<button class="topbar-notes-btn" onclick="openNotes()" title="Notes to self" aria-label="Notes to self">📝${hasNotes?'<span class="nb-dot"></span>':''}</button>`;
   const cycleEl=c
     ? `<div class="cycle-badge active">🔒 Cycle active · ${c.endDate}</div>`
     : `<div class="cycle-badge" onclick="goTab('settings',document.getElementById('nb-settings'));switchSettingsTab('cycle',document.getElementById('st-cycle'))" style="cursor:pointer;">+ Start cycle</div>`;
-  el.innerHTML=scoreBtn+notesBtn+cycleEl;
+  el.innerHTML=scoreBtn+emptyBtn+notesBtn+cycleEl;
 }
 
 function allHabitsAddressed(){
@@ -6672,6 +6714,22 @@ function toggleStudyPanel(){
   const b=document.getElementById('study-body'); if(b) b.style.display=studyExpanded?'block':'none';
   const c=document.getElementById('study-chev'); if(c) c.style.transform=studyExpanded?'rotate(180deg)':'none';
 }
+let weeklyExpanded = { personal: (typeof localStorage!=='undefined') && localStorage.getItem('wkExpPersonal')==='true',
+                       job:      (typeof localStorage!=='undefined') && localStorage.getItem('wkExpJob')==='true' };
+function toggleWeeklyPanel(key){
+  weeklyExpanded[key] = !weeklyExpanded[key];
+  try{ localStorage.setItem(key==='job'?'wkExpJob':'wkExpPersonal', weeklyExpanded[key]); }catch(e){}
+  const b=document.getElementById('weekly-body-'+key); if(b) b.style.display=weeklyExpanded[key]?'block':'none';
+  const c=document.getElementById('wk-chev-'+key); if(c) c.style.transform=weeklyExpanded[key]?'rotate(180deg)':'none';
+}
+let todCollapsed = {};
+try{ if(typeof localStorage!=='undefined') todCollapsed = JSON.parse(localStorage.getItem('todCollapsed')||'{}'); }catch(e){ todCollapsed={}; }
+function toggleTodBucket(key){
+  todCollapsed[key] = !todCollapsed[key];
+  try{ localStorage.setItem('todCollapsed', JSON.stringify(todCollapsed)); }catch(e){}
+  const b=document.getElementById('htod-body-'+key); if(b) b.style.display=todCollapsed[key]?'none':'block';
+  const c=document.getElementById('htod-chev-'+key); if(c) c.style.transform=todCollapsed[key]?'none':'rotate(180deg)';
+}
 
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function escAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -6722,19 +6780,23 @@ function choreRecurLabel(ch){
 
 // Surfaced chores for today (max 3). Auto-seeds from recurring matches,
 // respects removals (dismissed) and the daily cap.
+function choreActiveCount(td){ const hidden=S.choreHidden?.[td]||[]; return (S.choreToday[td]||[]).filter(id=>!hidden.includes(id) && !(S.choreLog?.[td]?.[id])).length; }
+function choreVisibleIds(td){ const hidden=S.choreHidden?.[td]||[]; return (S.choreToday[td]||[]).filter(id=>!hidden.includes(id)); }
+function clearCompletedChores(td){ if(!S.choreHidden) S.choreHidden={}; if(!S.choreHidden[td]) S.choreHidden[td]=[]; choreVisibleIds(td).forEach(id=>{ if(S.choreLog?.[td]?.[id] && !S.choreHidden[td].includes(id)) S.choreHidden[td].push(id); }); }
+
 function syncTodaysChores(){
   const td = today();
   if(!S.choreToday) S.choreToday = {};
   if(!S.choreDismissed) S.choreDismissed = {};
+  if(!S.choreHidden) S.choreHidden = {};
   if(!Array.isArray(S.choreToday[td])) S.choreToday[td] = [];
   if(!Array.isArray(S.choreDismissed[td])) S.choreDismissed[td] = [];
-  // Drop deleted / archived chores
+  if(!Array.isArray(S.choreHidden[td])) S.choreHidden[td] = [];
   S.choreToday[td] = S.choreToday[td].filter(id => S.chores.some(c=>c.id===id && !c.archived));
-  // Auto-add recurring matches (only while the day is still open)
   if(!S.completedDays.includes(td)){
     const matches = S.chores.filter(c=>!c.archived && choreMatchesDate(c, td));
     for(const c of matches){
-      if(S.choreToday[td].length >= MAX_CHORES) break;
+      if(choreActiveCount(td) >= MAX_CHORES) break;
       if(S.choreToday[td].includes(c.id)) continue;
       if(S.choreDismissed[td].includes(c.id)) continue;
       S.choreToday[td].push(c.id);
@@ -6749,18 +6811,23 @@ function buildChoresSection(){
   const td = today();
   pruneOneOffs();
   const locked = S.completedDays.includes(td);
-  const ids = syncTodaysChores();
-  const total = ids.length;
-  const done = ids.filter(id => S.choreLog?.[td]?.[id]).length;
+  syncTodaysChores();
+  const visible = choreVisibleIds(td);
+  const total = visible.length;
+  const done = visible.filter(id => S.choreLog?.[td]?.[id]).length;
+  const active = choreActiveCount(td);
+
+  if(total===0 && !showEmptyCats){ el.innerHTML=''; return; }
 
   let rows;
   if(total === 0){
     rows = `<div class="chore-empty">No chores set for today.<br>Pick a few small things and call it done.</div>`;
   } else {
-    rows = ids.map(id=>{
+    rows = visible.map(id=>{
       const c = S.chores.find(c=>c.id===id); if(!c) return '';
       const d = !!(S.choreLog?.[td]?.[id]);
-      return `<div class="chore-row${d?' done':''}">
+      return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}">
+        ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;flex-shrink:0;">☰</span>`}
         <div class="chore-cbox" onclick="${locked?'':`toggleChoreDone('${id}')`}">✓</div>
         <div class="chore-label" onclick="${locked?'':`toggleChoreDone('${id}')`}">${escHtml(c.name)}
           <div class="chore-sub">${choreRecurLabel(c)}</div>
@@ -6770,7 +6837,7 @@ function buildChoresSection(){
     }).join('');
   }
 
-  const canAdd = !locked && total < MAX_CHORES;
+  const canAdd = !locked && active < MAX_CHORES;
   const exp = choresExpanded;
   const countColor = (total>0 && done===total) ? 'var(--green)' : 'var(--blue)';
   el.innerHTML = `
@@ -6780,7 +6847,7 @@ function buildChoresSection(){
           <span style="font-size:1rem;">🧹</span>
           <div>
             <div style="font-size:.82rem;font-weight:700;color:var(--tx);">Today's Chores</div>
-            <div style="font-size:.65rem;color:var(--tx3);">${total?`${total} selected`:'None yet — tap to add'}</div>
+            <div style="font-size:.65rem;color:var(--tx3);">${total?`${total} showing`:'None yet — tap to add'}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -6792,13 +6859,21 @@ function buildChoresSection(){
         <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
           <button class="chore-manage-btn" onclick="event.stopPropagation();openChoreLibrary()">☰ Manage</button>
         </div>
-        ${rows}
+        <div class="cks" id="chores-rows">${rows}</div>
         ${canAdd ? `<div class="chore-quick">
           <input class="chore-quick-inp" id="chore-quick-inp" placeholder="Quick add a one-off for today…" onkeydown="if(event.key==='Enter')quickAddChore()"/>
           <button class="chore-quick-btn" onclick="quickAddChore()">Add</button>
-        </div>` : (locked ? '' : `<div class="chore-full-note">That's 3 for today — keep it simple. Use ☰ Manage to swap one out.</div>`)}
+        </div>` : (locked ? '' : `<div class="chore-full-note">3 chores on the go — finish them to add more.</div>`)}
       </div>
     </div>`;
+  if(!locked && visible.length){
+    const visObjs = visible.map(id=>S.chores.find(c=>c.id===id)).filter(Boolean);
+    makeDraggable('#chores-rows', ()=>visObjs, ()=>{
+      const hidden = S.choreHidden?.[td]||[];
+      S.choreToday[td] = visObjs.map(o=>o.id).concat(hidden);
+      save(); buildChoresSection(); updateHeroStats();
+    });
+  }
 }
 
 // Quick ad-hoc one-off chore, straight onto today (not a recurring chore).
@@ -6809,7 +6884,8 @@ function quickAddChore(){
   const td = today();
   if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
   if(!S.choreToday[td]) S.choreToday[td]=[];
-  if(S.choreToday[td].length >= MAX_CHORES){ toast('Max 3 chores for today'); return; }
+  if(choreActiveCount(td) >= MAX_CHORES){ showAlert('Finish your current 3 first', 'Complete the three chores you have going, then you can add another set of three.'); return; }
+  clearCompletedChores(td);
   const id = uid();
   S.chores.push({ id, name, recur:{type:'once', date:td}, archived:false, createdAt:new Date().toISOString() });
   S.choreToday[td].push(id);
@@ -6860,9 +6936,12 @@ function addChoreToToday(id){
   const td = today();
   if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
   if(!S.choreToday[td]) S.choreToday[td]=[];
-  if(S.choreToday[td].includes(id)) return;
-  if(S.choreToday[td].length >= MAX_CHORES){ toast('Max 3 chores for today'); return; }
-  S.choreToday[td].push(id);
+  const hidden = S.choreHidden?.[td]||[];
+  if(S.choreToday[td].includes(id) && !hidden.includes(id)) return; // already visible
+  if(choreActiveCount(td) >= MAX_CHORES){ showAlert('Finish your current 3 first', 'Complete the three chores you have going, then you can add another three.'); return; }
+  clearCompletedChores(td);
+  if(S.choreHidden?.[td]?.includes(id)) S.choreHidden[td] = S.choreHidden[td].filter(x=>x!==id);
+  if(!S.choreToday[td].includes(id)) S.choreToday[td].push(id);
   if(S.choreDismissed[td]) S.choreDismissed[td] = S.choreDismissed[td].filter(x=>x!==id);
   save();
   buildChoresSection();
@@ -6874,6 +6953,7 @@ function removeChoreFromToday(id){
   const td = today();
   if(!S.choreToday[td]) S.choreToday[td]=[];
   S.choreToday[td] = S.choreToday[td].filter(x=>x!==id);
+  if(S.choreHidden?.[td]) S.choreHidden[td] = S.choreHidden[td].filter(x=>x!==id);
   if(!S.choreDismissed[td]) S.choreDismissed[td]=[];
   if(!S.choreDismissed[td].includes(id)) S.choreDismissed[td].push(id);
   save();
@@ -6985,7 +7065,7 @@ function choreFormHtml(){
 function choreLibRow(c, ctx, nextDate){
   const td = today();
   const onToday = (S.choreToday[td]||[]).includes(c.id);
-  const full = (S.choreToday[td]||[]).length >= MAX_CHORES;
+  const full = choreActiveCount(td) >= MAX_CHORES;
   let meta = choreRecurLabel(c);
   if(ctx==='upcoming' && nextDate) meta = 'Next: '+friendlyDate(nextDate);
   let actions='';
@@ -7057,17 +7137,23 @@ function renderChoreLibrary(){
 const MAX_STUDIES = 3;
 let studyUI = { addOpen:false, editId:null, draftName:'', draftType:'daily', draftDays:[], draftDom:1, draftDate:'' };
 
+function studyActiveCount(td){ const hidden=S.studyHidden?.[td]||[]; return (S.studyToday[td]||[]).filter(id=>!hidden.includes(id) && !(S.studyLog?.[td]?.[id])).length; }
+function studyVisibleIds(td){ const hidden=S.studyHidden?.[td]||[]; return (S.studyToday[td]||[]).filter(id=>!hidden.includes(id)); }
+function clearCompletedStudies(td){ if(!S.studyHidden) S.studyHidden={}; if(!S.studyHidden[td]) S.studyHidden[td]=[]; studyVisibleIds(td).forEach(id=>{ if(S.studyLog?.[td]?.[id] && !S.studyHidden[td].includes(id)) S.studyHidden[td].push(id); }); }
+
 function syncTodaysStudies(){
   const td = today();
   if(!S.studyToday) S.studyToday = {};
   if(!S.studyDismissed) S.studyDismissed = {};
+  if(!S.studyHidden) S.studyHidden = {};
   if(!Array.isArray(S.studyToday[td])) S.studyToday[td] = [];
   if(!Array.isArray(S.studyDismissed[td])) S.studyDismissed[td] = [];
+  if(!Array.isArray(S.studyHidden[td])) S.studyHidden[td] = [];
   S.studyToday[td] = S.studyToday[td].filter(id => S.studies.some(c=>c.id===id && !c.archived));
   if(!S.completedDays.includes(td)){
     const matches = S.studies.filter(c=>!c.archived && choreMatchesDate(c, td));
     for(const c of matches){
-      if(S.studyToday[td].length >= MAX_STUDIES) break;
+      if(studyActiveCount(td) >= MAX_STUDIES) break;
       if(S.studyToday[td].includes(c.id)) continue;
       if(S.studyDismissed[td].includes(c.id)) continue;
       S.studyToday[td].push(c.id);
@@ -7126,19 +7212,24 @@ function buildStudySection(){
   const td = today();
   pruneOneOffStudies();
   const locked = S.completedDays.includes(td);
-  const ids = syncTodaysStudies();
-  const total = ids.length;
-  const done = ids.filter(id => S.studyLog?.[td]?.[id]).length;
+  syncTodaysStudies();
+  const visible = studyVisibleIds(td);
+  const total = visible.length;
+  const done = visible.filter(id => S.studyLog?.[td]?.[id]).length;
+  const active = studyActiveCount(td);
   const habName = studyHabitName();
+
+  if(total===0 && !habName && !showEmptyCats){ el.innerHTML=''; return; }
 
   let rows;
   if(total === 0){
     rows = `<div class="chore-empty">No study planned for today.<br>Add what you want to learn today.</div>`;
   } else {
-    rows = ids.map(id=>{
+    rows = visible.map(id=>{
       const c = S.studies.find(c=>c.id===id); if(!c) return '';
       const d = !!(S.studyLog?.[td]?.[id]);
-      return `<div class="chore-row${d?' done':''}">
+      return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}">
+        ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;flex-shrink:0;">☰</span>`}
         <div class="chore-cbox" onclick="${locked?'':`toggleStudyDone('${id}')`}">✓</div>
         <div class="chore-label" onclick="${locked?'':`toggleStudyDone('${id}')`}">${escHtml(c.name)}
           <div class="chore-sub">${choreRecurLabel(c)}</div>
@@ -7148,10 +7239,10 @@ function buildStudySection(){
     }).join('');
   }
 
-  const canAdd = !locked && total < MAX_STUDIES;
+  const canAdd = !locked && active < MAX_STUDIES;
   const exp = studyExpanded;
   const countColor = (total>0 && done===total) ? 'var(--green)' : 'var(--purple)';
-  const subtitle = habName ? `🔗 Ticks off ${escHtml(habName)}` : (total?`${total} selected`:'None yet — tap to add');
+  const subtitle = habName ? `🔗 Ticks off ${escHtml(habName)}` : (total?`${total} showing`:'None yet — tap to add');
   el.innerHTML = `
     <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:9px;">
       <div onclick="toggleStudyPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
@@ -7171,13 +7262,21 @@ function buildStudySection(){
         <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
           <button class="chore-manage-btn" onclick="event.stopPropagation();openStudyLibrary()">☰ Manage</button>
         </div>
-        ${rows}
+        <div class="cks" id="study-rows">${rows}</div>
         ${canAdd ? `<div class="chore-quick">
           <input class="chore-quick-inp" id="study-quick-inp" placeholder="Add what to study today…" onkeydown="if(event.key==='Enter')quickAddStudy()"/>
           <button class="chore-quick-btn" onclick="quickAddStudy()">Add</button>
-        </div>` : (locked ? '' : `<div class="chore-full-note">That's 3 study items — focus. Use ☰ Manage to swap one out.</div>`)}
+        </div>` : (locked ? '' : `<div class="chore-full-note">3 study items on the go — finish them to add more.</div>`)}
       </div>
     </div>`;
+  if(!locked && visible.length){
+    const visObjs = visible.map(id=>S.studies.find(c=>c.id===id)).filter(Boolean);
+    makeDraggable('#study-rows', ()=>visObjs, ()=>{
+      const hidden = S.studyHidden?.[td]||[];
+      S.studyToday[td] = visObjs.map(o=>o.id).concat(hidden);
+      save(); buildStudySection(); updateHeroStats();
+    });
+  }
 }
 
 function toggleStudyDone(id){
@@ -7199,7 +7298,8 @@ function quickAddStudy(){
   const td = today();
   if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
   if(!S.studyToday[td]) S.studyToday[td]=[];
-  if(S.studyToday[td].length >= MAX_STUDIES){ toast('Max 3 study items for today'); return; }
+  if(studyActiveCount(td) >= MAX_STUDIES){ showAlert('Finish your current 3 first', 'Complete the three study items you have going, then you can add another set of three.'); return; }
+  clearCompletedStudies(td);
   const id = uid();
   S.studies.push({ id, name, recur:{type:'once', date:td}, archived:false, createdAt:new Date().toISOString() });
   S.studyToday[td].push(id);
@@ -7222,9 +7322,12 @@ function addStudyToToday(id){
   const td = today();
   if(S.completedDays.includes(td)){ toast('Day already completed'); return; }
   if(!S.studyToday[td]) S.studyToday[td]=[];
-  if(S.studyToday[td].includes(id)) return;
-  if(S.studyToday[td].length >= MAX_STUDIES){ toast('Max 3 study items for today'); return; }
-  S.studyToday[td].push(id);
+  const hidden = S.studyHidden?.[td]||[];
+  if(S.studyToday[td].includes(id) && !hidden.includes(id)) return;
+  if(studyActiveCount(td) >= MAX_STUDIES){ showAlert('Finish your current 3 first', 'Complete the three study items you have going, then you can add another three.'); return; }
+  clearCompletedStudies(td);
+  if(S.studyHidden?.[td]?.includes(id)) S.studyHidden[td] = S.studyHidden[td].filter(x=>x!==id);
+  if(!S.studyToday[td].includes(id)) S.studyToday[td].push(id);
   if(S.studyDismissed[td]) S.studyDismissed[td] = S.studyDismissed[td].filter(x=>x!==id);
   save();
   buildStudySection();
@@ -7237,6 +7340,7 @@ function removeStudyFromToday(id){
   const td = today();
   if(!S.studyToday[td]) S.studyToday[td]=[];
   S.studyToday[td] = S.studyToday[td].filter(x=>x!==id);
+  if(S.studyHidden?.[td]) S.studyHidden[td] = S.studyHidden[td].filter(x=>x!==id);
   if(!S.studyDismissed[td]) S.studyDismissed[td]=[];
   if(!S.studyDismissed[td].includes(id)) S.studyDismissed[td].push(id);
   save();
@@ -7366,7 +7470,7 @@ function studyFormHtml(){
 function studyLibRow(c, ctx, nextDate){
   const td = today();
   const onToday = (S.studyToday[td]||[]).includes(c.id);
-  const full = (S.studyToday[td]||[]).length >= MAX_STUDIES;
+  const full = studyActiveCount(td) >= MAX_STUDIES;
   let meta = choreRecurLabel(c);
   if(ctx==='upcoming' && nextDate) meta = 'Next: '+friendlyDate(nextDate);
   let actions='';
@@ -7670,6 +7774,26 @@ function renderScoreTrend(){
       scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.07)'}},x:{ticks:{font:{size:9}},grid:{display:false}}}}});
 }
 
+// ── GLOBAL UI: empty-category visibility + simple alert popup ────────────
+let showEmptyCats = (typeof localStorage!=='undefined') ? localStorage.getItem('showEmptyCats')!=='false' : true; // default: show
+function toggleEmptyCats(){
+  showEmptyCats = !showEmptyCats;
+  try{ localStorage.setItem('showEmptyCats', showEmptyCats); }catch(e){}
+  const b=document.getElementById('empty-cats-btn'); if(b) b.textContent = showEmptyCats?'👁':'🙈';
+  buildDailyView();
+}
+function showAlert(title, msg){
+  const ex=document.getElementById('alert-modal'); if(ex) ex.remove();
+  const m=document.createElement('div'); m.className='modal-bg open'; m.id='alert-modal';
+  m.innerHTML=`<div class="modal" style="max-width:380px;">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:9px;">${title}</div>
+    <div style="font-size:.82rem;color:var(--tx2);line-height:1.55;margin-bottom:18px;">${msg}</div>
+    <button class="btn btp bfu" onclick="document.getElementById('alert-modal').remove()">Got it</button>
+  </div>`;
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
+}
+
 function init(){
   migrateV37();
   // One-time: collapse the old 3 seeded notes down to just the combined one,
@@ -7681,6 +7805,12 @@ function init(){
       );
     }
     S.selfNotesMigratedV1 = true;
+    save();
+  }
+  // One-time: give existing weekly-focus goals a category (default Personal)
+  if(!S.weeklyCatMigratedV1){
+    if(S.weeklyGoals){ for(const wk in S.weeklyGoals){ (S.weeklyGoals[wk]||[]).forEach(g=>{ if(!g.cat) g.cat='personal'; }); } }
+    S.weeklyCatMigratedV1 = true;
     save();
   }
   // Initialise lastActiveDate if not set
