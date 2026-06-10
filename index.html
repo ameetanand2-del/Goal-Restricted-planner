@@ -575,11 +575,13 @@ select.inp{appearance:none;}
 
   <div class="tab-switch">
     <div class="ts-btn on" id="tr-habits" onclick="switchTrackerTab('habits',this)">Habits</div>
+    <div class="ts-btn" id="tr-commit" onclick="switchTrackerTab('commitment',this)">Commitment</div>
     <div class="ts-btn" id="tr-cycle" onclick="switchTrackerTab('cycle',this)">Cycle</div>
     <div class="ts-btn" id="tr-history" onclick="switchTrackerTab('history',this)">History</div>
   </div>
 
   <div class="subpage on" id="trsub-habits"><div id="tracker-habits-content"></div></div>
+  <div class="subpage" id="trsub-commitment"><div id="tracker-commitment-content"></div></div>
   <div class="subpage" id="trsub-cycle"><div id="tracker-cycle-content"></div></div>
   <div class="subpage" id="trsub-history"><div id="tracker-history-content"></div></div>
 
@@ -963,6 +965,7 @@ function switchTrackerTab(id,el){
   document.getElementById('trsub-'+id)?.classList.add('on');
   const scroller=document.querySelector('.scroll'); if(scroller) scroller.scrollTop=0;
   if(id==='habits')  buildTrackerHabits();
+  if(id==='commitment') buildTrackerCommitment();
   if(id==='cycle')   buildTrackerCycle();
   if(id==='history') buildTrackerHistory();
 }
@@ -3693,6 +3696,66 @@ function buildTrackerHabits(){
   renderTrendDropList(habits);
   renderTrendChart(habits);
   renderHeatmap(habits);
+}
+
+// ── COMMITMENT TRACKER: promised vs delivered, per category ──────────────
+const CMT_CATS = [
+  {key:'habits',    label:'Habits',            emoji:'✨', color:'#22c55e'},
+  {key:'tasks',     label:'Tasks',             emoji:'✅', color:'#14b8a6'},
+  {key:'study',     label:'Study',             emoji:'📚', color:'#3b82f6'},
+  {key:'chores',    label:'Chores',            emoji:'🧹', color:'#e8622a'},
+  {key:'wpersonal', label:"This Week's Focus · Personal", emoji:'🏠', color:'#a855f7'},
+  {key:'wjob',      label:"This Week's Focus · Job",      emoji:'💼', color:'#f5a623'}
+];
+function cmtSparkline(catKey, color){
+  const offs=[-9,-8,-7,-6,-5,-4,-3,-2,-1,0];
+  const stats=offs.map(o=>catWeekStats(catKey,o));
+  const maxC=Math.max(1, ...stats.map(s=>s.total));
+  const W=300,H=46,n=offs.length,gap=4,bw=(W-(n-1)*gap)/n;
+  let bars='';
+  stats.forEach((s,i)=>{
+    const x=i*(bw+gap);
+    const ch=(s.total/maxC)*H, dh=(s.done/maxC)*H;
+    bars+=`<rect x="${x.toFixed(1)}" y="${(H-ch).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(ch,s.total?2:0).toFixed(1)}" rx="2" fill="${color}" opacity="0.18"/>`;
+    if(s.done>0) bars+=`<rect x="${x.toFixed(1)}" y="${(H-dh).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(dh,2).toFixed(1)}" rx="2" fill="${color}"/>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" style="display:block;">${bars}</svg>`;
+}
+function buildTrackerCommitment(){
+  const el=document.getElementById('tracker-commitment-content'); if(!el) return;
+  let html=`<div style="font-size:.7rem;color:var(--tx3);margin:2px 2px 14px;line-height:1.55;"><b>Promised vs delivered</b> for each category. Promised = what you planned or selected; done = what you completed. Use it to see whether you're keeping commitments — or over-promising.</div>`;
+  CMT_CATS.forEach(c=>{
+    const tw=catWeekStats(c.key,0), lw=catWeekStats(c.key,-1), pw=catWeekStats(c.key,-2);
+    const cell=(lab,s)=>`<div style="flex:1;text-align:center;">
+        <div style="font-size:.54rem;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);font-weight:700;">${lab}</div>
+        <div style="font-size:.95rem;font-weight:800;color:var(--tx);margin-top:3px;">${s.total?`${s.done}/${s.total}`:'—'}</div>
+        <div style="font-size:.62rem;color:${s.total?scoreColor(s.pct):'var(--tx3)'};font-weight:700;">${s.total?s.pct+'%':'no data'}</div>
+      </div>`;
+    let verdict;
+    if(tw.total===0) verdict='Nothing planned this week yet.';
+    else if(tw.pct>=90) verdict='On top of it — delivering what you commit.';
+    else if(tw.pct>=60) verdict=`Mostly keeping up — ${tw.done} of ${tw.total} done.`;
+    else verdict=`Over-promising — committed ${tw.total}, did ${tw.done} so far.`;
+    let delta='';
+    if(tw.total && lw.total){ const d=tw.pct-lw.pct; const a=d>0?'▲':d<0?'▼':'■'; const col=d>0?'var(--green)':d<0?'var(--red)':'var(--tx3)'; delta=` · <span style="color:${col};font-weight:700;">${a} ${Math.abs(d)}% vs last wk</span>`; }
+    html+=`<div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px;">
+        <span style="font-size:1rem;">${c.emoji}</span>
+        <div style="flex:1;font-size:.8rem;font-weight:700;color:var(--tx);">${c.label}</div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:13px;">${cell('This wk',tw)}${cell('Last wk',lw)}${cell('2 wks ago',pw)}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div style="font-size:.57rem;color:var(--tx3);font-weight:600;">Promised vs done · last 10 weeks</div>
+        <div style="font-size:.54rem;color:var(--tx3);display:flex;align-items:center;gap:9px;">
+          <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;border-radius:2px;background:${c.color};opacity:.22;display:inline-block;"></span>promised</span>
+          <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;border-radius:2px;background:${c.color};display:inline-block;"></span>done</span>
+        </div>
+      </div>
+      ${cmtSparkline(c.key,c.color)}
+      <div style="font-size:.66rem;color:var(--tx2);margin-top:9px;line-height:1.45;">${verdict}${delta}</div>
+    </div>`;
+  });
+  el.innerHTML=html;
 }
 
 function wireRingDayClicks(){
@@ -7660,6 +7723,26 @@ function dimGoals(offset){
   const total = goals.length, done = goals.filter(g=>g.status==='completed').length;
   return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
 }
+function dimGoalsCat(offset, catKey){
+  const wk = scoreWeekKeyForOffset(offset);
+  const goals = (S.weeklyGoals?.[wk]||[]).filter(g=>g.status!=='moved' && (g.cat||'personal')===catKey);
+  const total = goals.length, done = goals.filter(g=>g.status==='completed').length;
+  return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
+}
+// Promised-vs-delivered stats for one category in a given week offset (current week = elapsed days only)
+function catWeekStats(catKey, offset){
+  let days = getWeekDays(offset);
+  if(offset===0) days = days.filter(d=>d<=today());
+  switch(catKey){
+    case 'habits':    return dimHabits(days);
+    case 'tasks':     return dimTasks(days);
+    case 'study':     return dimPicked(days, S.studyToday, S.studyLog);
+    case 'chores':    return dimPicked(days, S.choreToday, S.choreLog);
+    case 'wpersonal': return dimGoalsCat(offset, 'personal');
+    case 'wjob':      return dimGoalsCat(offset, 'job');
+  }
+  return { pct:0, done:0, total:0, active:false };
+}
 
 function computeScoreForDays(days, goalOffset){
   const dims = {
@@ -7739,7 +7822,7 @@ function renderScorePanel(isMorning){
       ${scoreBar('Chores', tw.dims.chores,'🧹')}
       ${scoreBar('Weekly goals', tw.dims.goals,'🎯')}
     </div>
-    <div class="chore-lib-sec-lbl">📈 Last 6 weeks · by category</div>
+    <div class="chore-lib-sec-lbl">📈 Last 10 weeks · by category</div>
     <div style="height:190px;position:relative;"><canvas id="score-trend-canvas"></canvas></div>
     <div style="font-size:.6rem;color:var(--tx3);margin-top:8px;text-align:center;line-height:1.5;">Weighted total: Study ×3 · Habits ×2 · Tasks/Chores/Goals ×1. Categories you didn't use are skipped, not scored 0.</div>`;
   setTimeout(renderScoreTrend, 40);
@@ -7749,23 +7832,25 @@ function renderScoreTrend(){
   const cv=document.getElementById('score-trend-canvas');
   if(!cv || typeof Chart==='undefined') return;
   if(scoreChart){ try{scoreChart.destroy();}catch(e){} scoreChart=null; }
-  const offsets=[-5,-4,-3,-2,-1,0];
+  const offsets=[-9,-8,-7,-6,-5,-4,-3,-2,-1,0];
   const labels=offsets.map(o=>getWeekDays(o)[0].slice(5).replace('-','/'));
   const scores=offsets.map(o=>weekScore(o));
   const line=(label,color,width,extract,isTotal)=>({
     label, data:scores.map(extract), borderColor:color,
     backgroundColor:isTotal?'rgba(168,85,247,.10)':'transparent', fill:!!isTotal,
     borderWidth:width, tension:.3, spanGaps:true,
-    pointRadius:isTotal?4:2, pointHoverRadius:isTotal?6:4,
+    pointRadius:isTotal?3:2, pointHoverRadius:isTotal?6:4,
     pointBackgroundColor:color, pointBorderColor:'#fff', pointBorderWidth:1
   });
+  // Category lines plot 0 when unused that week (visible gap shows as a dip);
+  // the weighted Total still excludes unused categories (s.overall).
   const datasets=[
     line('Total','#a855f7',3,s=>s.overall,true),
-    line('Study','#3b82f6',1.5,s=>s.dims.study.active?s.dims.study.pct:null),
-    line('Habits','#22c55e',1.5,s=>s.dims.habits.active?s.dims.habits.pct:null),
-    line('Tasks','#14b8a6',1.5,s=>s.dims.tasks.active?s.dims.tasks.pct:null),
-    line('Chores','#e8622a',1.5,s=>s.dims.chores.active?s.dims.chores.pct:null),
-    line('Goals','#f5a623',1.5,s=>s.dims.goals.active?s.dims.goals.pct:null)
+    line('Study','#3b82f6',1.5,s=>s.dims.study.active?s.dims.study.pct:0),
+    line('Habits','#22c55e',1.5,s=>s.dims.habits.active?s.dims.habits.pct:0),
+    line('Tasks','#14b8a6',1.5,s=>s.dims.tasks.active?s.dims.tasks.pct:0),
+    line('Chores','#e8622a',1.5,s=>s.dims.chores.active?s.dims.chores.pct:0),
+    line('Goals','#f5a623',1.5,s=>s.dims.goals.active?s.dims.goals.pct:0)
   ];
   scoreChart=new Chart(cv,{type:'line',data:{labels,datasets},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
