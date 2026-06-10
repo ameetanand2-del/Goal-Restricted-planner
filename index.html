@@ -483,8 +483,8 @@ select.inp{appearance:none;}
 
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <div class="sg5" style="flex:1;margin:0;">
-      <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Done</div></div>
-      <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0</div><div class="slb">Tasks</div></div>
+      <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Habits</div></div>
+      <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0/0</div><div class="slb">Tasks</div></div>
       <div class="stile" onclick="document.getElementById('chores-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
         <div class="sv" id="hchores" style="color:var(--blue)">0/0</div>
         <div class="slb">Chores</div>
@@ -535,7 +535,10 @@ select.inp{appearance:none;}
   <!-- Today's tasks -->
   <div id="daily-tasks-wrap" style="display:none;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="sl" style="margin:0;">📋 Today's tasks</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="sl" style="margin:0;">📋 Today's tasks</div>
+        <span id="daily-tasks-count" style="font-size:.7rem;font-weight:700;color:var(--teal);background:rgba(20,184,166,.12);padding:2px 8px;border-radius:99px;"></span>
+      </div>
       <button id="daily-task-group-toggle" onclick="toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
         <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
       </button>
@@ -2532,10 +2535,13 @@ function toggleDailyTaskGrouping(){
 
 function buildDailyTasks(){
   const td = today();
-  // Show tasks due today or overdue and NOT done, excluding future goal tasks
-  let tasks = S.tasks.filter(t=>!t.archived&&!t.done&&t.dueDate&&t.dueDate<=td&&!isTaskFromFutureGoal(t));
+  // Tasks due today/overdue still open, PLUS tasks completed today (shown struck-through)
+  let tasks = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && t.dueDate && t.dueDate<=td && (!t.done || t.doneAt===td));
   const el = document.getElementById('daily-tasks-wrap');
   const list = document.getElementById('daily-tasks-list');
+  const countEl = document.getElementById('daily-tasks-count');
+  const doneCount = tasks.filter(t=>t.done).length;
+  if(countEl) countEl.textContent = tasks.length ? `${doneCount}/${tasks.length}` : '';
   if(!tasks.length){
     if(showEmptyCats){
       if(el) el.style.display='';
@@ -2764,12 +2770,12 @@ function renderDailyTaskRow(t){
   const goal = t.goalId?S.goals.find(g=>g.id===t.goalId):null;
   const sub = proj?proj.name:goal?goal.name:'';
   const overdue = t.dueDate < td;
-  return `<div class="task-d drag-item" data-id="${t.id}">
+  return `<div class="task-d drag-item${t.done?' done':''}" data-id="${t.id}">
     <span class="drag-handle" style="font-size:.85rem;color:var(--tx3);padding:6px 8px 6px 2px;cursor:grab;touch-action:none;">☰</span>
     <div class="task-d-check" onclick="event.stopPropagation();toggleDailyTask('${t.id}')">${t.done?'✓':''}</div>
     <div style="flex:1;">
-      <div class="task-d-label drag-label">${t.name}</div>
-      ${sub||overdue?`<div class="task-d-sub">${overdue&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?' · '+sub:''}</div>`:''}
+      <div class="task-d-label drag-label" style="${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}</div>
+      ${sub||(overdue&&!t.done)?`<div class="task-d-sub">${overdue&&!t.done&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?(overdue&&!t.done?' · ':'')+sub:''}</div>`:''}
     </div>
   </div>`;
 }
@@ -2826,10 +2832,8 @@ function buildDoneSection(){
     getHabitState(td, h.id) === 'done' && shouldShowHabitToday(h)
   );
   
-  // Get done tasks (completed TODAY only)
-  const doneTasks = S.tasks.filter(t => !t.archived && t.done && t.doneAt === td);
-  
-  const totalDone = doneHabits.length + doneTasks.length;
+  // Done section now shows completed habits only (tasks live in the Tasks section)
+  const totalDone = doneHabits.length;
   
   if(totalDone === 0){
     el.innerHTML = '';
@@ -2851,20 +2855,10 @@ function buildDoneSection(){
     </div>`;
   });
   
-  // Render done tasks
-  doneTasks.forEach(t => {
-    itemsHtml += `<div class="done-item">
-      <div style="width:5px;height:5px;border-radius:50%;background:var(--teal);flex-shrink:0;"></div>
-      <div class="done-item-label">${t.name}</div>
-      <span class="done-item-type" style="background:rgba(20,184,166,.1);color:var(--teal);">Task</span>
-      <button class="done-item-undo" onclick="undoTask('${t.id}')">Undo</button>
-    </div>`;
-  });
-  
   el.innerHTML = `<div class="done-section">
     <div class="done-section-hdr" onclick="toggleSection('${bodyId}')">
       <span style="font-size:.85rem;">✅</span>
-      <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--green);">Done today</div>
+      <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--green);">Habits</div>
       <span style="font-size:.7rem;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:99px;">${totalDone}</span>
       <span style="font-size:.62rem;color:var(--tx3);">▾</span>
     </div>
@@ -3048,15 +3042,10 @@ function updateHeroStats(){
   const tasksDone = todayTasks.filter(t=>t.done && t.doneAt===td).length;
   const tasksTotal = todayTasks.length;
   
-  // Combined totals
-  const combinedDone = habitsDone + tasksDone;
-  const combinedTotal = habits.length + todayTasks.length;
+  document.getElementById('hhabits').textContent=habitsDone+'/'+habits.length;
   
-  document.getElementById('hhabits').textContent=combinedDone+'/'+combinedTotal;
-  
-  // Tasks count (show remaining or total)
-  const tasksRemaining = tasksTotal - tasksDone;
-  document.getElementById('htasks').textContent = tasksRemaining > 0 ? tasksRemaining : (tasksTotal > 0 ? '✓' : '0');
+  // Tasks KPI: completed / total for today (matches chores/study format)
+  document.getElementById('htasks').textContent = tasksDone+'/'+tasksTotal;
 
   // Chores KPI: completed / selected for today
   const choreIds = (typeof syncTodaysChores==='function') ? syncTodaysChores() : (S.choreToday?.[td]||[]);
