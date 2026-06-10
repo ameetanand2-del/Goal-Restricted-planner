@@ -576,14 +576,10 @@ select.inp{appearance:none;}
   <div class="tab-switch">
     <div class="ts-btn on" id="tr-habits" onclick="switchTrackerTab('habits',this)">Habits</div>
     <div class="ts-btn" id="tr-commit" onclick="switchTrackerTab('commitment',this)">Commitment</div>
-    <div class="ts-btn" id="tr-cycle" onclick="switchTrackerTab('cycle',this)">Cycle</div>
-    <div class="ts-btn" id="tr-history" onclick="switchTrackerTab('history',this)">History</div>
   </div>
 
   <div class="subpage on" id="trsub-habits"><div id="tracker-habits-content"></div></div>
   <div class="subpage" id="trsub-commitment"><div id="tracker-commitment-content"></div></div>
-  <div class="subpage" id="trsub-cycle"><div id="tracker-cycle-content"></div></div>
-  <div class="subpage" id="trsub-history"><div id="tracker-history-content"></div></div>
 
 </div></div>
 
@@ -966,8 +962,6 @@ function switchTrackerTab(id,el){
   const scroller=document.querySelector('.scroll'); if(scroller) scroller.scrollTop=0;
   if(id==='habits')  buildTrackerHabits();
   if(id==='commitment') buildTrackerCommitment();
-  if(id==='cycle')   buildTrackerCycle();
-  if(id==='history') buildTrackerHistory();
 }
 
 function switchSettingsTab(id,el){
@@ -3743,16 +3737,18 @@ function buildTrackerCommitment(){
         <span style="font-size:1rem;">${c.emoji}</span>
         <div style="flex:1;font-size:.8rem;font-weight:700;color:var(--tx);">${c.label}</div>
       </div>
-      <div style="display:flex;gap:6px;margin-bottom:13px;">${cell('This wk',tw)}${cell('Last wk',lw)}${cell('2 wks ago',pw)}</div>
+      <div style="display:flex;gap:6px;margin-bottom:3px;">${cell('This wk',tw)}${cell('Last wk',lw)}${cell('2 wks ago',pw)}</div>
+      <div style="text-align:center;font-size:.54rem;color:var(--tx3);margin-bottom:12px;">numbers shown as <b>done / planned</b></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
         <div style="font-size:.57rem;color:var(--tx3);font-weight:600;">Promised vs done · last 10 weeks</div>
         <div style="font-size:.54rem;color:var(--tx3);display:flex;align-items:center;gap:9px;">
-          <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;border-radius:2px;background:${c.color};opacity:.22;display:inline-block;"></span>promised</span>
+          <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;border-radius:2px;background:${c.color};opacity:.22;display:inline-block;"></span>planned</span>
           <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;border-radius:2px;background:${c.color};display:inline-block;"></span>done</span>
         </div>
       </div>
       ${cmtSparkline(c.key,c.color)}
-      <div style="font-size:.66rem;color:var(--tx2);margin-top:9px;line-height:1.45;">${verdict}${delta}</div>
+      <div style="font-size:.55rem;color:var(--tx3);margin-top:5px;text-align:center;line-height:1.4;">Each bar = one week (oldest left → this week right). Taller = more planned; the filled part is what you finished.</div>
+      <div style="font-size:.66rem;color:var(--tx2);margin-top:9px;line-height:1.45;border-top:1px solid var(--bdr);padding-top:8px;">${verdict}${delta}</div>
     </div>`;
   });
   el.innerHTML=html;
