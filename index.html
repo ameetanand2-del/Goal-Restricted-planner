@@ -911,6 +911,42 @@ function getActiveHabits(){
 
 function getActiveCycle(){ return S.cycle&&S.cycle.status==='active'?S.cycle:null; }
 
+// ── HABIT WEIGHTING ──────────────────────────────────────────────────────
+const MAX_HABITS = 12;
+let habitTrendMode = (typeof localStorage!=='undefined' && localStorage.getItem('habitTrendMode')==='pct') ? 'pct' : 'count';
+function habitWeight(h){ const w=Number(h&&h.weight)||0; return (w>0 && w<=100) ? w : 0; }
+// Effective weights for a set of habits shown together: explicit weights kept,
+// unweighted habits split the remaining % of 100 equally (auto-share).
+function effectiveHabitWeights(habitList){
+  const autos = habitList.filter(h=>habitWeight(h)<=0);
+  const explicitSum = habitList.reduce((s,h)=>s+habitWeight(h),0);
+  const remaining = Math.max(0, 100 - explicitSum);
+  const share = autos.length ? remaining/autos.length : 0;
+  const m={};
+  habitList.forEach(h=>{ m[h.id] = habitWeight(h)>0 ? habitWeight(h) : share; });
+  return m;
+}
+// Weighted completion stats for a single day (over the habits shown that day)
+function weightedHabitDayStats(day){
+  const shown = getActiveHabits().filter(h=>shouldShowHabitOnDay(h,day));
+  if(!shown.length) return { pct:0, doneW:0, totW:0, doneCount:0, total:0, has:false };
+  const w = effectiveHabitWeights(shown);
+  let doneW=0, totW=0, doneCount=0;
+  shown.forEach(h=>{ const ew=w[h.id]||0; totW+=ew; if(getHabitState(day,h.id)==='done'){ doneW+=ew; doneCount++; } });
+  return { pct: totW?Math.round(doneW/totW*100):0, doneW, totW, doneCount, total:shown.length, has:true };
+}
+// Least-squares trend line points for a numeric series (returns array same length, or null if <2 pts)
+function linTrend(data){
+  const pts=data.map((y,x)=>[x,y]).filter(p=>p[1]!=null);
+  if(pts.length<2) return null;
+  const n=pts.length;
+  const sx=pts.reduce((s,p)=>s+p[0],0), sy=pts.reduce((s,p)=>s+p[1],0);
+  const sxx=pts.reduce((s,p)=>s+p[0]*p[0],0), sxy=pts.reduce((s,p)=>s+p[0]*p[1],0);
+  const denom=(n*sxx - sx*sx); if(denom===0) return null;
+  const slope=(n*sxy - sx*sy)/denom, intercept=(sy - slope*sx)/n;
+  return data.map((_,x)=>Math.round((slope*x+intercept)*10)/10);
+}
+
 function getHabitState(date, habId){ return S.habitLog?.[date]?.[habId]||null; }
 function setHabitState(date, habId, state){
   if(!S.habitLog) S.habitLog={};
@@ -2374,6 +2410,9 @@ function renderHabitRow(h, date, locked){
   const col = habitColor(h);
   const freq = h.targetDays===7?'Daily':h.targetDays+'×/wk';
   const reason = S.habitReasons?.[date+'_'+h.id]||'';
+  const shownToday = getActiveHabits().filter(x=>shouldShowHabitOnDay(x,date));
+  const ew = effectiveHabitWeights(shownToday)[h.id] || 0;
+  const isAuto = habitWeight(h)<=0;
   return `<div class="ci drag-item${isDone?' done':isSkip?' skipped':''}" data-id="${h.id}">
     ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.75rem;padding:4px 5px 4px 0;">&#9776;</span>`}
     <div class="cbox" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}">✓</div>
@@ -2381,6 +2420,7 @@ function renderHabitRow(h, date, locked){
     <div style="flex:1;" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}">
       <div class="drag-label cil">${h.name}</div>
       <div class="cis">${freq}${h.hint?' · '+h.hint.slice(0,42):''}</div>
+      <div style="margin-top:3px;"><span onclick="event.stopPropagation();openWeightPicker('${h.id}')" style="display:inline-block;font-size:.6rem;font-weight:700;color:var(--a);background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.18);border-radius:99px;padding:1px 8px;cursor:pointer;">⚖ ${Math.round(ew)}%${isAuto?' · auto':''}</span></div>
       ${isSkip&&h.reasonEnabled?`<div class="reason-wrap show" onclick="event.stopPropagation()">
         <textarea class="reason-inp" id="r-${h.id}" placeholder="Why did you skip?" onchange="saveReason('${h.id}')">${reason}</textarea>
         <button class="reason-save" onclick="saveReason('${h.id}')">Save</button>
@@ -2389,6 +2429,40 @@ function renderHabitRow(h, date, locked){
     ${h.hint?`<button onclick="event.stopPropagation();showHabitHint('${h.id}')" style="font-size:.75rem;color:var(--tx3);padding:3px 5px;flex-shrink:0;">ℹ️</button>`:''}
     <button onclick="event.stopPropagation();openTodPicker('${h.id}')" class="tod-chip${TOD_BUCKETS.some(b=>b.key===h.tod&&b.key!=='none')?'':' empty'}" title="Tag time of day">${todChipContent(h.tod)}</button>
   </div>`;
+}
+
+function openWeightPicker(habId){
+  const h = S.habits.find(x=>x.id===habId); if(!h) return;
+  const others = getActiveHabits().filter(x=>x.id!==habId);
+  const otherExplicit = others.reduce((s,x)=>s+habitWeight(x),0);
+  const maxThis = Math.max(0, 100 - otherExplicit);
+  const cur = habitWeight(h);
+  const ex=document.getElementById('weight-modal'); if(ex) ex.remove();
+  const m=document.createElement('div'); m.className='modal-bg open'; m.id='weight-modal';
+  m.innerHTML=`<div class="modal" style="max-width:400px;">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:4px;">Weight · ${h.name}</div>
+    <div style="font-size:.74rem;color:var(--tx2);line-height:1.5;margin-bottom:14px;">How much this habit counts toward your daily %. Up to <b>${maxThis}%</b> available (the rest is shared automatically by un-weighted habits).</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <input type="range" id="wt-range" min="0" max="${maxThis}" step="1" value="${Math.min(cur,maxThis)}" oninput="document.getElementById('wt-val').textContent=this.value+'%';" style="flex:1;">
+      <span id="wt-val" style="font-size:.9rem;font-weight:800;min-width:46px;text-align:right;">${Math.min(cur,maxThis)}%</span>
+    </div>
+    <div style="font-size:.62rem;color:var(--tx3);margin-bottom:16px;">Set to 0% to keep it on <b>auto</b> (equal share of whatever's left).</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btgh" style="flex:1;" onclick="document.getElementById('weight-modal').remove()">Cancel</button>
+      <button class="btn btp" style="flex:1;" onclick="setHabitWeight('${habId}')">Save</button>
+    </div>
+  </div>`;
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
+}
+function setHabitWeight(habId){
+  const h = S.habits.find(x=>x.id===habId); if(!h) return;
+  const v = parseInt(document.getElementById('wt-range')?.value)||0;
+  h.weight = v>0 ? v : 0;
+  save();
+  document.getElementById('weight-modal')?.remove();
+  buildDailyHabits(); updateRing(); updateHeroStats();
+  toast(v>0?`Weight set to ${v}%`:'Set to auto');
 }
 
 function toggleHab(habId){
@@ -2873,14 +2947,17 @@ function updateRing(){
   let habitsDone=0, habitsSkip=0;
   habits.forEach(h=>{ const s=getHabitState(td,h.id); if(s==='done') habitsDone++; else if(s==='skipped') habitsSkip++; });
   const habitsTotal=habits.length;
+  // Weighted habit completion (0..1) — important habits move the ring more
+  const hstat = weightedHabitDayStats(td);
+  const habitFrac = hstat.totW ? hstat.doneW/hstat.totW : 0;
   
   // Get today's tasks: due today or overdue, NOT completed OR completed today
   const todayTasks = S.tasks.filter(t=>!t.archived&&!isTaskFromFutureGoal(t)&&t.dueDate&&t.dueDate<=td&&(!t.done || t.doneAt===td));
   const tasksDone = todayTasks.filter(t=>t.done && t.doneAt===td).length;
   const tasksTotal = todayTasks.length;
   
-  // Combined totals for ring
-  const combinedDone = habitsDone + tasksDone;
+  // Combined totals for ring (habit part is weighted, tasks counted as-is)
+  const combinedDone = (habitFrac*habitsTotal) + tasksDone;
   const combinedTotal = habitsTotal + tasksTotal;
   const pct = combinedTotal?Math.round(combinedDone/combinedTotal*100):0;
   
@@ -3642,11 +3719,17 @@ function buildTrackerHabits(){
   <div id="selected-day-details"></div>
 
   <div style="margin-bottom:22px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
       <div class="sl" style="margin:0;">&#128200; Daily Trend</div>
-      <select id="dash-weeks-select" onchange="setDashWeeks(parseInt(this.value))" style="padding:6px 12px;font-size:.72rem;font-weight:600;background:var(--sur);color:var(--tx);border:1px solid var(--bdr);border-radius:var(--r2);appearance:none;-webkit-appearance:none;cursor:pointer;min-width:70px;text-align:center;">
-        ${[1,2,3,4,6,8,12].map(n=>`<option value="${n}" ${n===dashWeeks?'selected':''}>${n} week${n>1?'s':''}</option>`).join('')}
-      </select>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r2);overflow:hidden;">
+          <button onclick="setTrendMode('pct')" style="font-size:.66rem;font-weight:700;padding:6px 11px;border:none;cursor:pointer;background:${habitTrendMode==='pct'?'var(--a)':'transparent'};color:${habitTrendMode==='pct'?'#fff':'var(--tx2)'};">%</button>
+          <button onclick="setTrendMode('count')" style="font-size:.66rem;font-weight:700;padding:6px 11px;border:none;cursor:pointer;background:${habitTrendMode==='count'?'var(--a)':'transparent'};color:${habitTrendMode==='count'?'#fff':'var(--tx2)'};">Count</button>
+        </div>
+        <select id="dash-weeks-select" onchange="setDashWeeks(parseInt(this.value))" style="padding:6px 12px;font-size:.72rem;font-weight:600;background:var(--sur);color:var(--tx);border:1px solid var(--bdr);border-radius:var(--r2);appearance:none;-webkit-appearance:none;cursor:pointer;min-width:70px;text-align:center;">
+          ${[1,2,3,4,6,8,12].map(n=>`<option value="${n}" ${n===dashWeeks?'selected':''}>${n} week${n>1?'s':''}</option>`).join('')}
+        </select>
+      </div>
     </div>
     <div style="position:relative;margin-bottom:10px;">
       <button onclick="toggleTrendDrop()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r2);font-size:.78rem;color:var(--tx2);">
@@ -4045,6 +4128,7 @@ function renderTrendDropList(habits){
 }
 
 function setDashWeeks(n){ dashWeeks=n; buildTrackerHabits(); }
+function setTrendMode(m){ habitTrendMode = (m==='pct'?'pct':'count'); try{localStorage.setItem('habitTrendMode',habitTrendMode);}catch(e){} buildTrackerHabits(); }
 
 function renderTrendChart(habits){
   if(trendChart){ try{trendChart.destroy();}catch(e){} trendChart=null; }
@@ -4054,67 +4138,51 @@ function renderTrendChart(habits){
   const totalHabits = habits.length;
   const td = today();
   
-  // Default view: daily completion count with target line
+  // Default view: daily completion — % (weighted) or raw count, with a trend line
   if(!dashHabits.length){
-    // Calculate daily completion counts for each day across all weeks - ONLY UP TO TODAY
     const allDays = blocks.flatMap(b => b.days).filter(d => d <= td);
     const labels = allDays.map(d => {
       const dt = new Date(d + 'T12:00:00');
       return dt.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
     });
-    
-    const dailyCounts = allDays.map(day => {
-      return habits.filter(h => getHabitState(day, h.id) === 'done').length;
-    });
-    
+    const pctMode = habitTrendMode==='pct';
+    const series = allDays.map(day => pctMode ? weightedHabitDayStats(day).pct
+                                              : habits.filter(h => getHabitState(day, h.id) === 'done').length);
+    const trend = linTrend(series);
     const datasets = [
       {
-        label: 'Habits completed',
-        data: dailyCounts,
+        label: pctMode ? 'Weighted completion' : 'Habits completed',
+        data: series,
         borderColor: 'rgba(232,98,42,1)',
         backgroundColor: 'rgba(232,98,42,.1)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 4,
-        pointBackgroundColor: 'rgba(232,98,42,1)',
-        borderWidth: 2.5
-      },
-      {
-        label: 'Target',
-        data: allDays.map(() => totalHabits),
-        borderColor: 'rgba(34,197,94,.6)',
-        borderDash: [6, 4],
-        borderWidth: 2,
-        pointRadius: 0,
-        fill: false,
-        tension: 0
+        fill: true, tension: 0.3, pointRadius: 3,
+        pointBackgroundColor: 'rgba(232,98,42,1)', borderWidth: 2.5, order:2
       }
     ];
-    
+    if(trend) datasets.push({
+      label:'Trend', data:trend, borderColor:'rgba(99,102,241,.9)', borderDash:[5,4],
+      borderWidth:2, pointRadius:0, fill:false, tension:0, order:1
+    });
+    if(!pctMode) datasets.push({
+      label:'Target', data:allDays.map(()=>totalHabits), borderColor:'rgba(34,197,94,.5)',
+      borderDash:[6,4], borderWidth:2, pointRadius:0, fill:false, tension:0, order:0
+    });
+    const yMax = pctMode ? 100 : Math.max(totalHabits + 2, Math.max(1,...series) + 2);
     setTimeout(()=>{
       const cv=document.getElementById('c-trend'); if(!cv) return;
       trendChart=new Chart(cv,{
         type:'line',
         data:{labels, datasets},
         options:{
-          responsive:true,
-          maintainAspectRatio:false,
+          responsive:true, maintainAspectRatio:false,
           interaction:{mode:'index',intersect:false},
           plugins:{
             legend:{display:true,position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10,color:'#888'}},
-            tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}
+            tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}${pctMode?'%':''}`}}
           },
           scales:{
-            y:{
-              min:0,
-              max:Math.max(totalHabits + 2, Math.max(...dailyCounts) + 2),
-              ticks:{font:{size:9}, stepSize:1},
-              grid:{color:'rgba(128,128,128,.07)'}
-            },
-            x:{
-              ticks:{font:{size:8}, maxRotation:45, minRotation:45},
-              grid:{display:false}
-            }
+            y:{ min:0, max:yMax, ticks:{font:{size:9}, stepSize:pctMode?20:1, callback:v=>pctMode?v+'%':v}, grid:{color:'rgba(128,128,128,.07)'} },
+            x:{ ticks:{font:{size:8}, maxRotation:45, minRotation:45}, grid:{display:false} }
           }
         }
       });
@@ -5928,6 +5996,7 @@ function saveProject(){
 
 function saveHabit(){
   const name=document.getElementById('qa-name')?.value.trim(); if(!name){ toast('Enter a name'); return; }
+  if(getActiveHabits().length >= MAX_HABITS){ showAlert('12-habit limit reached', 'You can track up to 12 habits at a time. Archive one you no longer need before adding another.'); return; }
   const goalId=document.getElementById('qa-goal')?.value||null;
   const projId=document.getElementById('qa-proj')?.value||null;
   if(!goalId){ toast('Please select a goal'); return; }
@@ -6122,6 +6191,7 @@ function openAddHabitToProj(projId){
 
 function saveHabitToProj(projId){
   const name=document.getElementById('ph-name')?.value.trim(); if(!name){ toast('Enter a name'); return; }
+  if(getActiveHabits().length >= MAX_HABITS){ showAlert('12-habit limit reached', 'You can track up to 12 habits at a time. Archive one you no longer need before adding another.'); return; }
   const targetDays=parseInt(document.getElementById('ph-days')?.value)||7;
   const hint=document.getElementById('ph-hint')?.value.trim()||'';
   const reasonEnabled=document.getElementById('ph-reason')?.checked||false;
@@ -7697,10 +7767,12 @@ function scoreColor(pct){ return pct>=80?'#22c55e':pct>=60?'#f5a623':'#e8622a'; 
 function scoreWeekKeyForOffset(offset){ return getWeekKey(getWeekDays(offset)[3]); } // mid-week → stable Monday key
 
 function dimHabits(days){
-  const habits = getActiveHabits();
-  let done=0,total=0;
-  days.forEach(d=>habits.forEach(h=>{ if(shouldShowHabitOnDay(h,d)){ total++; if(getHabitState(d,h.id)==='done') done++; } }));
-  return { pct: total?Math.round(done/total*100):0, done, total, active: total>0 };
+  let done=0,total=0,pctSum=0,daysWithHabits=0;
+  days.forEach(d=>{
+    const st=weightedHabitDayStats(d);
+    if(st.has){ daysWithHabits++; pctSum+=st.pct; done+=st.doneCount; total+=st.total; }
+  });
+  return { pct: daysWithHabits?Math.round(pctSum/daysWithHabits):0, done, total, active: total>0 };
 }
 function dimTasks(days){
   const dset = new Set(days);
