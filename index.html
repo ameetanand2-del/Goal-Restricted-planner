@@ -534,16 +534,29 @@ select.inp{appearance:none;}
 
   <!-- Today's tasks -->
   <div id="daily-tasks-wrap" style="display:none;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="sl" style="margin:0;">📋 Today's tasks</div>
-        <span id="daily-tasks-count" style="font-size:.7rem;font-weight:700;color:var(--teal);background:rgba(20,184,166,.12);padding:2px 8px;border-radius:99px;"></span>
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:9px;">
+      <div onclick="toggleTasksPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1rem;">📋</span>
+          <div>
+            <div style="font-size:.82rem;font-weight:700;color:var(--tx);">Today's Tasks</div>
+            <div id="daily-tasks-sub" style="font-size:.65rem;color:var(--tx3);">None yet</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="daily-tasks-count" style="font-size:.72rem;font-weight:700;color:var(--teal);">0/0</span>
+          <span id="tasks-chev" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;">▾</span>
+        </div>
       </div>
-      <button id="daily-task-group-toggle" onclick="toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
-        <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
-      </button>
+      <div id="tasks-body" style="display:none;padding:0 12px 12px;">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <button id="daily-task-group-toggle" onclick="event.stopPropagation();toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+            <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
+          </button>
+        </div>
+        <div id="daily-tasks-list"></div>
+      </div>
     </div>
-    <div id="daily-tasks-list"></div>
   </div>
 
   <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
@@ -2540,8 +2553,13 @@ function buildDailyTasks(){
   const el = document.getElementById('daily-tasks-wrap');
   const list = document.getElementById('daily-tasks-list');
   const countEl = document.getElementById('daily-tasks-count');
+  const subEl = document.getElementById('daily-tasks-sub');
   const doneCount = tasks.filter(t=>t.done).length;
-  if(countEl) countEl.textContent = tasks.length ? `${doneCount}/${tasks.length}` : '';
+  if(countEl) countEl.textContent = `${doneCount}/${tasks.length}`;
+  if(subEl) subEl.textContent = tasks.length ? `${tasks.length} task${tasks.length!==1?'s':''}` : 'None yet';
+  // Apply collapse state (mirrors chores/study)
+  const body=document.getElementById('tasks-body'); if(body) body.style.display=tasksExpanded?'block':'none';
+  const chev=document.getElementById('tasks-chev'); if(chev) chev.style.transform=tasksExpanded?'rotate(180deg)':'none';
   if(!tasks.length){
     if(showEmptyCats){
       if(el) el.style.display='';
@@ -6858,6 +6876,13 @@ function toggleStudyPanel(){
 }
 let weeklyExpanded = { personal: (typeof localStorage!=='undefined') && localStorage.getItem('wkExpPersonal')==='true',
                        job:      (typeof localStorage!=='undefined') && localStorage.getItem('wkExpJob')==='true' };
+let tasksExpanded = (typeof localStorage!=='undefined') && localStorage.getItem('tasksExpanded')==='true';
+function toggleTasksPanel(){
+  tasksExpanded = !tasksExpanded;
+  try{ localStorage.setItem('tasksExpanded', tasksExpanded); }catch(e){}
+  const b=document.getElementById('tasks-body'); if(b) b.style.display=tasksExpanded?'block':'none';
+  const c=document.getElementById('tasks-chev'); if(c) c.style.transform=tasksExpanded?'rotate(180deg)':'none';
+}
 function toggleWeeklyPanel(key){
   weeklyExpanded[key] = !weeklyExpanded[key];
   try{ localStorage.setItem(key==='job'?'wkExpJob':'wkExpPersonal', weeklyExpanded[key]); }catch(e){}
