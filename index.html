@@ -2419,8 +2419,7 @@ function renderHabitRow(h, date, locked){
     <div class="cdot" style="background:${col}" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}"></div>
     <div style="flex:1;" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}">
       <div class="drag-label cil">${h.name}</div>
-      <div class="cis">${freq}${h.hint?' · '+h.hint.slice(0,42):''}</div>
-      <div style="margin-top:3px;"><span onclick="event.stopPropagation();openWeightPicker('${h.id}')" style="display:inline-block;font-size:.6rem;font-weight:700;color:var(--a);background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.18);border-radius:99px;padding:1px 8px;cursor:pointer;">⚖ ${Math.round(ew)}%${isAuto?' · auto':''}</span></div>
+      <div class="cis">${freq}${h.hint?' · '+h.hint.slice(0,42):''} · <span onclick="event.stopPropagation();openWeightPicker('${h.id}')" style="color:var(--a);font-weight:700;cursor:pointer;">⚖ ${Math.round(ew)}%${isAuto?' auto':''}</span></div>
       ${isSkip&&h.reasonEnabled?`<div class="reason-wrap show" onclick="event.stopPropagation()">
         <textarea class="reason-inp" id="r-${h.id}" placeholder="Why did you skip?" onchange="saveReason('${h.id}')">${reason}</textarea>
         <button class="reason-save" onclick="saveReason('${h.id}')">Save</button>
@@ -2432,37 +2431,60 @@ function renderHabitRow(h, date, locked){
 }
 
 function openWeightPicker(habId){
-  const h = S.habits.find(x=>x.id===habId); if(!h) return;
-  const others = getActiveHabits().filter(x=>x.id!==habId);
-  const otherExplicit = others.reduce((s,x)=>s+habitWeight(x),0);
-  const maxThis = Math.max(0, 100 - otherExplicit);
-  const cur = habitWeight(h);
+  const habits = getActiveHabits();
   const ex=document.getElementById('weight-modal'); if(ex) ex.remove();
+  const rows = habits.map(h=>{
+    const w = habitWeight(h);
+    const hl = h.id===habId;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px ${hl?'7px':'2px'};border-bottom:1px solid var(--bdr);${hl?'background:rgba(232,98,42,.07);border-radius:8px;':''}">
+      <div style="flex:1;min-width:0;font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.name}</div>
+      <span id="wtauto-${h.id}" style="font-size:.6rem;color:var(--tx3);min-width:62px;text-align:right;"></span>
+      <div style="display:flex;align-items:center;gap:3px;">
+        <input type="number" inputmode="numeric" id="wtin-${h.id}" min="0" max="100" value="${w>0?w:''}" placeholder="auto" oninput="recalcWeightTotals()" style="width:54px;text-align:center;font-size:.82rem;font-weight:700;padding:6px 4px;border:1px solid var(--bdr);border-radius:7px;background:var(--bg);color:var(--tx);">
+        <span style="font-size:.72rem;color:var(--tx3);">%</span>
+      </div>
+    </div>`;
+  }).join('');
   const m=document.createElement('div'); m.className='modal-bg open'; m.id='weight-modal';
-  m.innerHTML=`<div class="modal" style="max-width:400px;">
-    <div style="font-size:.95rem;font-weight:700;margin-bottom:4px;">Weight · ${h.name}</div>
-    <div style="font-size:.74rem;color:var(--tx2);line-height:1.5;margin-bottom:14px;">How much this habit counts toward your daily %. Up to <b>${maxThis}%</b> available (the rest is shared automatically by un-weighted habits).</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-      <input type="range" id="wt-range" min="0" max="${maxThis}" step="1" value="${Math.min(cur,maxThis)}" oninput="document.getElementById('wt-val').textContent=this.value+'%';" style="flex:1;">
-      <span id="wt-val" style="font-size:.9rem;font-weight:800;min-width:46px;text-align:right;">${Math.min(cur,maxThis)}%</span>
-    </div>
-    <div style="font-size:.62rem;color:var(--tx3);margin-bottom:16px;">Set to 0% to keep it on <b>auto</b> (equal share of whatever's left).</div>
-    <div style="display:flex;gap:8px;">
+  m.innerHTML=`<div class="modal" style="max-width:440px;max-height:86vh;display:flex;flex-direction:column;">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:3px;">Habit weights</div>
+    <div style="font-size:.72rem;color:var(--tx2);line-height:1.5;margin-bottom:10px;">Give each habit a share of your daily 100%. Leave one blank for <b>auto</b> — auto habits split whatever's left equally.</div>
+    <div style="overflow-y:auto;flex:1;">${rows}</div>
+    <div id="wt-summary" style="margin-top:12px;padding:10px;border-radius:10px;font-size:.74rem;font-weight:700;text-align:center;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="btn btgh" style="flex:1;" onclick="document.getElementById('weight-modal').remove()">Cancel</button>
-      <button class="btn btp" style="flex:1;" onclick="setHabitWeight('${habId}')">Save</button>
+      <button class="btn btp" style="flex:1;" onclick="saveAllHabitWeights()">Save</button>
     </div>
   </div>`;
   m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
   document.body.appendChild(m);
+  recalcWeightTotals();
 }
-function setHabitWeight(habId){
-  const h = S.habits.find(x=>x.id===habId); if(!h) return;
-  const v = parseInt(document.getElementById('wt-range')?.value)||0;
-  h.weight = v>0 ? v : 0;
+function recalcWeightTotals(){
+  const habits=getActiveHabits();
+  let explicitSum=0; const autoIds=[];
+  habits.forEach(h=>{ const v=parseInt(document.getElementById('wtin-'+h.id)?.value)||0; if(v>0) explicitSum+=v; else autoIds.push(h.id); });
+  const remaining=Math.max(0,100-explicitSum);
+  const share=autoIds.length?Math.round(remaining/autoIds.length):0;
+  habits.forEach(h=>{ const el=document.getElementById('wtauto-'+h.id); if(!el) return; const v=parseInt(document.getElementById('wtin-'+h.id)?.value)||0; el.textContent = v>0?'':(autoIds.length?`auto ≈ ${share}%`:''); });
+  const sum=document.getElementById('wt-summary'); if(!sum) return;
+  let bg,col,msg;
+  if(explicitSum>100){ bg='rgba(239,68,68,.12)'; col='var(--red)'; msg=`⚠ Over by ${explicitSum-100}% — you've assigned ${explicitSum}% of 100%`; }
+  else if(autoIds.length){ bg='rgba(59,130,246,.10)'; col='var(--blue)'; msg=`${explicitSum}% set · ${remaining}% shared by ${autoIds.length} auto → 100% total`; }
+  else if(explicitSum===100){ bg='rgba(34,197,94,.12)'; col='var(--green)'; msg=`✓ Perfect — 100% assigned`; }
+  else { bg='rgba(245,166,35,.12)'; col='var(--a2)'; msg=`Only ${explicitSum}% of 100% assigned — ${remaining}% unused`; }
+  sum.style.background=bg; sum.style.color=col; sum.textContent=msg;
+}
+function saveAllHabitWeights(){
+  const habits=getActiveHabits();
+  let explicitSum=0;
+  habits.forEach(h=>{ const v=parseInt(document.getElementById('wtin-'+h.id)?.value)||0; if(v>0) explicitSum+=v; });
+  if(explicitSum>100){ toast('Total is over 100% — reduce some weights'); return; }
+  habits.forEach(h=>{ const v=parseInt(document.getElementById('wtin-'+h.id)?.value)||0; const hb=S.habits.find(x=>x.id===h.id); if(hb) hb.weight = v>0?Math.min(v,100):0; });
   save();
   document.getElementById('weight-modal')?.remove();
   buildDailyHabits(); updateRing(); updateHeroStats();
-  toast(v>0?`Weight set to ${v}%`:'Set to auto');
+  toast('Weights saved ✓');
 }
 
 function toggleHab(habId){
@@ -2947,19 +2969,17 @@ function updateRing(){
   let habitsDone=0, habitsSkip=0;
   habits.forEach(h=>{ const s=getHabitState(td,h.id); if(s==='done') habitsDone++; else if(s==='skipped') habitsSkip++; });
   const habitsTotal=habits.length;
-  // Weighted habit completion (0..1) — important habits move the ring more
+  // Weighted habit completion for today
   const hstat = weightedHabitDayStats(td);
-  const habitFrac = hstat.totW ? hstat.doneW/hstat.totW : 0;
   
   // Get today's tasks: due today or overdue, NOT completed OR completed today
   const todayTasks = S.tasks.filter(t=>!t.archived&&!isTaskFromFutureGoal(t)&&t.dueDate&&t.dueDate<=td&&(!t.done || t.doneAt===td));
   const tasksDone = todayTasks.filter(t=>t.done && t.doneAt===td).length;
   const tasksTotal = todayTasks.length;
   
-  // Combined totals for ring (habit part is weighted, tasks counted as-is)
-  const combinedDone = (habitFrac*habitsTotal) + tasksDone;
+  // Combined totals for ring summary; the headline % is weighted-habits-only
   const combinedTotal = habitsTotal + tasksTotal;
-  const pct = combinedTotal?Math.round(combinedDone/combinedTotal*100):0;
+  const pct = hstat.has ? hstat.pct : 0;
   
   const circ=201.1;
   const fill=document.getElementById('ring-fill');
@@ -3878,7 +3898,11 @@ function getDayCompletionData(day, habits){
   
   const totalDone = doneHabits.length + doneTasks.length;
   const totalItems = totalHabits + Math.max(totalTasks, doneTasks.length);
-  const pct = totalItems ? Math.round(totalDone / totalItems * 100) : 0;
+  // Completion % is weighted-habits-only (tasks are tracked separately, not folded into this %)
+  const ewMap = effectiveHabitWeights(activeHabits);
+  let _doneW=0,_totW=0;
+  activeHabits.forEach(h=>{ const w=ewMap[h.id]||0; _totW+=w; if(getHabitState(day,h.id)==='done') _doneW+=w; });
+  const pct = _totW ? Math.round(_doneW/_totW*100) : 0;
   
   return { doneHabits, skippedHabits, optedOutHabits, notTodayHabits, missedHabits, doneTasks, totalHabits, totalTasks: doneTasks.length, pct };
 }
