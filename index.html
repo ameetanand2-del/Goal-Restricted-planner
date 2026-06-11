@@ -354,8 +354,12 @@ select.inp{appearance:none;}
 .chore-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:.58rem;font-weight:700;background:rgba(20,184,166,.1);color:var(--teal);border:1px solid rgba(20,184,166,.2);}
 .chore-icon-btn{width:30px;height:30px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;color:var(--tx2);}
 .chore-icon-btn:active{background:var(--bg3);}
-.chore-icon-btn.add{color:var(--a);border-color:rgba(232,98,42,.25);background:rgba(232,98,42,.06);}
-.chore-icon-btn.disabled{opacity:.4;pointer-events:none;}
+.chore-icon-btn.add{color:var(--red);border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08);}
+.chore-icon-btn.on{color:var(--green);border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.1);}
+.chore-icon-btn.disabled{opacity:.55;pointer-events:none;}
+.task-d.done{background:rgba(34,197,94,.05);border-color:rgba(34,197,94,.18);}
+.task-d.done .task-d-check{background:var(--green);border-color:var(--green);color:#fff;}
+.task-d.done .task-d-label{text-decoration:line-through;color:var(--tx3);}
 .day-chips{display:flex;gap:5px;flex-wrap:wrap;}
 .day-chip{width:32px;height:32px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);font-size:.66rem;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
 .day-chip.on{background:var(--a);color:#fff;border-color:var(--a);}
@@ -2581,6 +2585,9 @@ function buildDailyTasks(){
       return aIdx - bIdx;
     });
   }
+  
+  // Completed tasks sink to the bottom; incomplete stay on top (stable)
+  tasks.sort((a,b)=> (a.done?1:0) - (b.done?1:0));
   
   let html = '';
   
@@ -6980,6 +6987,7 @@ function buildChoresSection(){
   const locked = S.completedDays.includes(td);
   syncTodaysChores();
   const visible = choreVisibleIds(td);
+  visible.sort((a,b)=> (S.choreLog?.[td]?.[a]?1:0) - (S.choreLog?.[td]?.[b]?1:0)); // done sink to bottom
   const total = visible.length;
   const done = visible.filter(id => S.choreLog?.[td]?.[id]).length;
   const active = choreActiveCount(td);
@@ -7243,7 +7251,7 @@ function choreLibRow(c, ctx, nextDate){
     actions = `<button class="chore-icon-btn add${dis}" onclick="addChoreToToday('${c.id}')" title="Add to today">＋</button>`;
   } else { // all
     const dis = (full||onToday)?' disabled':'';
-    actions = `<button class="chore-icon-btn add${dis}" onclick="addChoreToToday('${c.id}')" title="${onToday?'On today':'Add to today'}">${onToday?'✓':'＋'}</button>
+    actions = `<button class="chore-icon-btn ${onToday?'on':'add'}${dis}" onclick="addChoreToToday('${c.id}')" title="${onToday?'On today':'Add to today'}">${onToday?'✓':'＋'}</button>
       <button class="chore-icon-btn" onclick="startEditChore('${c.id}')" title="Edit">✎</button>
       <button class="chore-icon-btn" onclick="deleteChore('${c.id}')" title="Delete">🗑</button>`;
   }
@@ -7381,6 +7389,7 @@ function buildStudySection(){
   const locked = S.completedDays.includes(td);
   syncTodaysStudies();
   const visible = studyVisibleIds(td);
+  visible.sort((a,b)=> (S.studyLog?.[td]?.[a]?1:0) - (S.studyLog?.[td]?.[b]?1:0)); // done sink to bottom
   const total = visible.length;
   const done = visible.filter(id => S.studyLog?.[td]?.[id]).length;
   const active = studyActiveCount(td);
@@ -7648,7 +7657,7 @@ function studyLibRow(c, ctx, nextDate){
     actions = `<button class="chore-icon-btn add${dis}" onclick="addStudyToToday('${c.id}')" title="Add to today">＋</button>`;
   } else {
     const dis = (full||onToday)?' disabled':'';
-    actions = `<button class="chore-icon-btn add${dis}" onclick="addStudyToToday('${c.id}')" title="${onToday?'On today':'Add to today'}">${onToday?'✓':'＋'}</button>
+    actions = `<button class="chore-icon-btn ${onToday?'on':'add'}${dis}" onclick="addStudyToToday('${c.id}')" title="${onToday?'On today':'Add to today'}">${onToday?'✓':'＋'}</button>
       <button class="chore-icon-btn" onclick="startEditStudy('${c.id}')" title="Edit">✎</button>
       <button class="chore-icon-btn" onclick="deleteStudy('${c.id}')" title="Delete">🗑</button>`;
   }
