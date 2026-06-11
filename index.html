@@ -336,8 +336,8 @@ select.inp{appearance:none;}
 .chore-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:var(--r2);background:var(--bg);border:1px solid var(--bdr);margin-bottom:5px;}
 .chore-row.done{background:rgba(34,197,94,.05);border-color:rgba(34,197,94,.18);}
 .chore-row.done .chore-label{color:var(--tx3);text-decoration:line-through;}
-.chore-cbox{width:19px;height:19px;border-radius:5px;border:1.5px solid var(--bdr2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-size:.62rem;color:transparent;cursor:pointer;}
-.chore-row.done .chore-cbox{background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 0 8px rgba(34,197,94,.25);}
+.chore-cbox{width:19px;height:19px;border-radius:5px;border:1.5px solid var(--bdr2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-size:.55rem;color:var(--tx3);cursor:pointer;}
+.chore-row.done .chore-cbox{background:var(--green);border-color:var(--green);color:#fff;font-size:.62rem;box-shadow:0 0 8px rgba(34,197,94,.25);}
 .chore-label{font-size:.83rem;font-weight:500;flex:1;line-height:1.3;cursor:pointer;}
 .chore-sub{font-size:.6rem;color:var(--tx3);margin-top:2px;}
 .chore-x{font-size:.85rem;color:var(--tx3);padding:3px 6px;flex-shrink:0;line-height:1;}
@@ -553,7 +553,8 @@ select.inp{appearance:none;}
         </div>
       </div>
       <div id="tasks-body" style="display:none;padding:0 12px 12px;">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">
+          <button onclick="event.stopPropagation();openTaskPicker()" style="white-space:nowrap;font-size:.65rem;color:var(--a);padding:5px 12px;border-radius:99px;background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.2);font-weight:600;">+ Add task</button>
           <button id="daily-task-group-toggle" onclick="event.stopPropagation();toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
             <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
           </button>
@@ -3416,6 +3417,46 @@ function quickAddTask(){
   // Open full modal, pre-filling name if typed
   openNewTaskModal(name||'');
   if(inp) inp.value='';
+}
+
+function openTaskPicker(){
+  const td = today();
+  const all = S.tasks.filter(t=>!t.archived && !t.done && !isTaskFromFutureGoal(t));
+  const unscheduled = all.filter(t=>!t.dueDate);
+  const scheduled = all.filter(t=>t.dueDate && t.dueDate>td); // due today/overdue already appear in Today's Tasks
+  const row = (t)=>{
+    const proj = t.projId?S.projects.find(p=>p.id===t.projId):null;
+    const goal = t.goalId?S.goals.find(g=>g.id===t.goalId):null;
+    const sub = proj?proj.name:goal?goal.name:'';
+    const due = t.dueDate?friendlyDate(t.dueDate):'No date';
+    return `<div class="chore-lib-row">
+      <div style="flex:1;min-width:0;">
+        <div class="chore-lib-name">${escHtml(t.name)}</div>
+        <div class="chore-lib-meta">${sub?escHtml(sub)+' · ':''}${due}</div>
+      </div>
+      <button class="chore-icon-btn add" onclick="addTaskToToday('${t.id}')" title="Add to today">＋</button>
+    </div>`;
+  };
+  let body = `<div style="margin-bottom:12px;"><button class="btn btp bfu" onclick="openNewTaskModalToday()">+ Create new task</button></div>`;
+  body += `<div class="chore-lib-sec-lbl">📅 Scheduled ahead (${scheduled.length})</div>`;
+  body += scheduled.length ? scheduled.map(row).join('') : `<div class="chore-empty" style="padding:10px;">Nothing scheduled ahead.</div>`;
+  body += `<div class="chore-lib-sec-lbl" style="margin-top:14px;">📋 Unscheduled (${unscheduled.length})</div>`;
+  body += unscheduled.length ? unscheduled.map(row).join('') : `<div class="chore-empty" style="padding:10px;">No unscheduled tasks.</div>`;
+  document.getElementById('modal-title').textContent = 'Add a task to today';
+  document.getElementById('modal-body').innerHTML = body;
+  openModal('modal-main');
+}
+function addTaskToToday(taskId){
+  const t = S.tasks.find(x=>x.id===taskId); if(!t) return;
+  t.dueDate = today();
+  save();
+  buildDailyTasks(); updateHeroStats();
+  openTaskPicker();
+  toast('Added to today ✓');
+}
+function openNewTaskModalToday(){
+  openNewTaskModal('');
+  setTimeout(()=>{ const d=document.getElementById('nt-due'); if(d) d.value=today(); },130);
 }
 
 function openNewTaskModal(prefill){
@@ -7003,7 +7044,7 @@ function buildChoresSection(){
       const d = !!(S.choreLog?.[td]?.[id]);
       return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}">
         ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;flex-shrink:0;">☰</span>`}
-        <div class="chore-cbox" onclick="${locked?'':`toggleChoreDone('${id}')`}">✓</div>
+        <div class="chore-cbox" onclick="${locked?'':`toggleChoreDone('${id}')`}">${d?'✓':'●'}</div>
         <div class="chore-label" onclick="${locked?'':`toggleChoreDone('${id}')`}">${escHtml(c.name)}
           <div class="chore-sub">${choreRecurLabel(c)}</div>
         </div>
@@ -7406,7 +7447,7 @@ function buildStudySection(){
       const d = !!(S.studyLog?.[td]?.[id]);
       return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}">
         ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;flex-shrink:0;">☰</span>`}
-        <div class="chore-cbox" onclick="${locked?'':`toggleStudyDone('${id}')`}">✓</div>
+        <div class="chore-cbox" onclick="${locked?'':`toggleStudyDone('${id}')`}">${d?'✓':'●'}</div>
         <div class="chore-label" onclick="${locked?'':`toggleStudyDone('${id}')`}">${escHtml(c.name)}
           <div class="chore-sub">${choreRecurLabel(c)}</div>
         </div>
