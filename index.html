@@ -7316,8 +7316,9 @@ function renderChoreLibrary(){
 
   const form = choreUI.addOpen ? choreFormHtml() : `<button class="btn btg bfu" onclick="openChoreForm()">＋ New chore</button>`;
 
-  const todaySec = todayIds.length
-    ? todayIds.map(id=>{ const c=active.find(c=>c.id===id); return c?choreLibRow(c,'today'):''; }).join('')
+  const todayOrdered = [...todayIds].sort((a,b)=> (S.choreLog?.[td]?.[a]?1:0) - (S.choreLog?.[td]?.[b]?1:0));
+  const todaySec = todayOrdered.length
+    ? todayOrdered.map(id=>{ const c=active.find(c=>c.id===id); return c?choreLibRow(c,'today'):''; }).join('')
     : `<div class="chore-lib-meta" style="padding:3px 2px;">Nothing scheduled today yet.</div>`;
 
   const upcoming = active
@@ -7331,7 +7332,11 @@ function renderChoreLibrary(){
 
   const reusable = active.filter(c=>!(c.recur && c.recur.type==='once'));
   const allSec = reusable.length
-    ? reusable.slice().sort((a,b)=> a.name.toLowerCase()<b.name.toLowerCase()?-1:1).map(c=>choreLibRow(c,'all')).join('')
+    ? reusable.slice().sort((a,b)=>{
+        const da=S.choreLog?.[td]?.[a.id]?1:0, db=S.choreLog?.[td]?.[b.id]?1:0;
+        if(da!==db) return da-db; // completed-today sink to bottom
+        return a.name.toLowerCase()<b.name.toLowerCase()?-1:1;
+      }).map(c=>choreLibRow(c,'all')).join('')
     : `<div class="chore-lib-meta" style="padding:3px 2px;">No saved chores yet — add a recurring one above.</div>`;
 
   bodyEl.innerHTML = `
@@ -7732,8 +7737,9 @@ function renderStudyLibrary(){
 
   const form = studyUI.addOpen ? studyFormHtml() : `<button class="btn btg bfu" onclick="openStudyForm()">＋ New study item</button>`;
 
-  const todaySec = todayIds.length
-    ? todayIds.map(id=>{ const c=active.find(c=>c.id===id); return c?studyLibRow(c,'today'):''; }).join('')
+  const todayOrdered = [...todayIds].sort((a,b)=> (S.studyLog?.[td]?.[a]?1:0) - (S.studyLog?.[td]?.[b]?1:0));
+  const todaySec = todayOrdered.length
+    ? todayOrdered.map(id=>{ const c=active.find(c=>c.id===id); return c?studyLibRow(c,'today'):''; }).join('')
     : `<div class="chore-lib-meta" style="padding:3px 2px;">Nothing scheduled today yet.</div>`;
 
   const upcoming = active
@@ -7747,7 +7753,11 @@ function renderStudyLibrary(){
 
   const reusable = active.filter(c=>!(c.recur && c.recur.type==='once'));
   const allSec = reusable.length
-    ? reusable.slice().sort((a,b)=> a.name.toLowerCase()<b.name.toLowerCase()?-1:1).map(c=>studyLibRow(c,'all')).join('')
+    ? reusable.slice().sort((a,b)=>{
+        const da=S.studyLog?.[td]?.[a.id]?1:0, db=S.studyLog?.[td]?.[b.id]?1:0;
+        if(da!==db) return da-db; // completed-today sink to bottom
+        return a.name.toLowerCase()<b.name.toLowerCase()?-1:1;
+      }).map(c=>studyLibRow(c,'all')).join('')
     : `<div class="chore-lib-meta" style="padding:3px 2px;">No saved study items yet — add a recurring one above.</div>`;
 
   bodyEl.innerHTML = `
