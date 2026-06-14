@@ -592,6 +592,13 @@ select.inp{appearance:none;}
 <!-- ═══ TASKS ════════════════════════════════════════════════════════════ -->
 <div class="page" id="page-plan"><div class="pi">
 
+  <div class="tab-switch">
+    <div class="ts-btn on" id="tk-scheduled" onclick="setTaskTab('scheduled',this)">Scheduled</div>
+    <div class="ts-btn" id="tk-brain" onclick="setTaskTab('brain',this)">Brain dump</div>
+    <div class="ts-btn" id="tk-calendar" onclick="setTaskTab('calendar',this)">Calendar</div>
+    <div class="ts-btn" id="tk-done" onclick="setTaskTab('done',this)">Done</div>
+  </div>
+
   <div id="tasks-list-content"></div>
 
 </div></div>
@@ -743,16 +750,9 @@ select.inp{appearance:none;}
 
 </div><!-- end scroll -->
 
-<!-- Floating Action Button with Menu (Tasks) -->
+<!-- Floating Action Button (Tasks) -->
 <div id="fab-container" style="display:none;">
-  <div id="fab-menu" style="display:none;position:absolute;bottom:60px;right:0;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:140px;">
-    <div class="fab-item" onclick="setTaskFilter('all');closeFabMenu()">All</div>
-    <div class="fab-item" onclick="setTaskFilter('done');closeFabMenu()">Done</div>
-    <div class="fab-item" onclick="setTaskFilter('open');closeFabMenu()">Open</div>
-    <div class="fab-item" onclick="setTaskFilter('today');closeFabMenu()">Today</div>
-    <div class="fab-item fab-item-add" onclick="openTaskAddModal();closeFabMenu()">+ Add Task</div>
-  </div>
-  <button class="fab" onclick="toggleFabMenu()">+</button>
+  <button class="fab" onclick="openNewTaskModal('')">+</button>
 </div>
 
 <!-- Floating Action Button with Menu (Goals) -->
@@ -3303,6 +3303,24 @@ function completeDay(){
 function buildWeeklyView(){ buildTasksList(); } // called from goTab('plan')
 let taskFilter = 'today';
 let taskGrouped = true;
+let taskTab = 'scheduled';            // scheduled | brain | calendar | done
+let taskCalMonth = null;              // {y,m} for calendar view; null = current month
+let taskCalSelected = null;           // 'YYYY-MM-DD' selected day in calendar
+
+const TASK_PRI = {
+  high:{label:'High', color:'var(--red)',   rank:3, dot:'🔴'},
+  med: {label:'Med',  color:'var(--a)',     rank:2, dot:'🟠'},
+  low: {label:'Low',  color:'var(--blue)',  rank:1, dot:'🔵'},
+  '':  {label:'None', color:'var(--tx3)',   rank:0, dot:''}
+};
+function taskPriority(t){ const p=t&&t.priority; return TASK_PRI[p]?p:''; }
+
+function setTaskTab(tab, el){
+  taskTab = tab;
+  document.querySelectorAll('#page-plan .ts-btn').forEach(b=>b.classList.remove('on'));
+  el?.classList.add('on');
+  buildTasksList();
+}
 
 function setTaskFilter(f, el){
   taskFilter = f;
@@ -3323,74 +3341,101 @@ function toggleTaskGrouping(){
 function buildTasksList(){
   const el = document.getElementById('tasks-list-content'); if(!el) return;
   const td = today();
-  // Filter out archived tasks and tasks from future goals
-  let tasks = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t));
-  ensureOrder(tasks);
 
-  if(taskFilter==='open')  tasks = tasks.filter(t=>!t.done);
-  if(taskFilter==='today') tasks = tasks.filter(t=>!t.done && t.dueDate && t.dueDate<=td);
-  if(taskFilter==='done')  tasks = tasks.filter(t=>t.done);
+  if(taskTab==='calendar'){ renderTaskCalendar(el); return; }
+
+  const open = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && !t.done);
+  let tasks=[], emptyMsg='';
+  if(taskTab==='scheduled'){
+    tasks = open.filter(t=>t.dueDate);
+    tasks.sort((a,b)=> (a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0) || (TASK_PRI[taskPriority(b)].rank - TASK_PRI[taskPriority(a)].rank));
+    emptyMsg='Nothing scheduled. Add a task with a due date.';
+  } else if(taskTab==='brain'){
+    tasks = open.filter(t=>!t.dueDate); // unscheduled captures
+    tasks.sort((a,b)=> TASK_PRI[taskPriority(b)].rank - TASK_PRI[taskPriority(a)].rank);
+    emptyMsg='Brain dump is empty. Quick-capture unscheduled tasks here.';
+  } else { // done
+    tasks = S.tasks.filter(t=>!t.archived && t.done);
+    tasks.sort((a,b)=> (b.doneAt||'') < (a.doneAt||'') ? -1 : 1);
+    emptyMsg='No completed tasks yet.';
+  }
 
   if(!tasks.length){
-    const msgs = {open:'No open tasks — add one above.',today:'Nothing due today.',done:'No completed tasks yet.',all:'No tasks yet.'};
     el.innerHTML=`<div style="text-align:center;padding:32px 0;">
       <div style="font-size:1.6rem;margin-bottom:9px;">&#9989;</div>
-      <div style="font-size:.82rem;color:var(--tx3);">${msgs[taskFilter]}</div>
+      <div style="font-size:.82rem;color:var(--tx3);">${emptyMsg}</div>
     </div>`;
     return;
   }
 
-  let html = '';
-  let gIdx = 0;
-
-  if(taskGrouped){
-    // Group by project/goal or ungrouped
-    const groups = {};
-    tasks.forEach(t=>{
-      const key = t.projId?'proj:'+t.projId : t.goalId?'goal:'+t.goalId : '__none';
-      if(!groups[key]) {
-        let label='No project', color='var(--tx3)';
-        if(t.projId){ const p=S.projects.find(p=>p.id===t.projId); label=p?p.name:'Unknown'; color=p?projectColor(p):'var(--a)'; }
-        else if(t.goalId){ const g=S.goals.find(g=>g.id===t.goalId); label=g?g.name:'Unknown'; color=g?AREA_COLORS[g.area]||'var(--a)':'var(--a)'; }
-        groups[key]={label,color,tasks:[],key};
-      }
-      groups[key].tasks.push(t);
-    });
-
-    Object.values(groups).forEach(g=>{
-      html += `<div style="margin-bottom:14px;">
-        ${g.label!=='No project'?`<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;">
-          <div style="width:6px;height:6px;border-radius:50%;background:${g.color};flex-shrink:0;"></div>
-          <div style="font-size:.68rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.08em;">${g.label}</div>
-        </div>`:''}
-        <div class="task-drag-group" id="tg-${gIdx}">
-          ${g.tasks.map(t=>renderTaskRow(t)).join('')}
-        </div>
+  if(taskTab==='scheduled'){
+    const secs=[
+      {lbl:'Overdue',  col:'var(--red)',  items:tasks.filter(t=>t.dueDate<td)},
+      {lbl:'Today',    col:'var(--a2)',   items:tasks.filter(t=>t.dueDate===td)},
+      {lbl:'Upcoming', col:'var(--blue)', items:tasks.filter(t=>t.dueDate>td)}
+    ];
+    let html='';
+    secs.forEach(s=>{ if(!s.items.length) return;
+      html+=`<div style="margin-bottom:14px;">
+        <div style="font-size:.66rem;font-weight:700;color:${s.col};text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;">${s.lbl} · ${s.items.length}</div>
+        ${s.items.map(t=>renderTaskRow(t)).join('')}
       </div>`;
-      gIdx++;
     });
-    el.innerHTML = html;
-
-    // Wire drag per group
-    let gi = 0;
-    Object.values(groups).forEach(g=>{
-      const groupTasks = g.tasks;
-      makeDraggable('#tg-'+gi, ()=>groupTasks, buildTasksList);
-      gi++;
-    });
+    el.innerHTML=html;
   } else {
-    // Flat list - all tasks together
-    html = `<div class="task-drag-group" id="tg-all">
-      ${tasks.map(t=>renderTaskRow(t)).join('')}
-    </div>`;
-    el.innerHTML = html;
-    
-    // Wire drag for flat list
-    makeDraggable('#tg-all', ()=>tasks, buildTasksList);
+    el.innerHTML=`<div class="task-drag-group" id="tg-all">${tasks.map(t=>renderTaskRow(t)).join('')}</div>`;
   }
-  
-  // Wire swipe gestures for task rows
   wireTaskSwipeGestures();
+}
+
+function fmtYMD(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function taskCalShift(delta){
+  const now=new Date();
+  let y = taskCalMonth?taskCalMonth.y:now.getFullYear();
+  let m = (taskCalMonth?taskCalMonth.m:now.getMonth())+delta;
+  while(m<0){m+=12;y--;} while(m>11){m-=12;y++;}
+  taskCalMonth={y,m}; taskCalSelected=null; buildTasksList();
+}
+function taskCalSelect(ds){ taskCalSelected = (taskCalSelected===ds?null:ds); buildTasksList(); }
+function renderTaskCalendar(el){
+  const td=today(); const now=new Date();
+  const y = taskCalMonth?taskCalMonth.y:now.getFullYear();
+  const m = taskCalMonth?taskCalMonth.m:now.getMonth();
+  const first=new Date(y,m,1);
+  const startDow=(first.getDay()+6)%7; // Mon=0
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const open=S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && !t.done && t.dueDate);
+  const counts={}; open.forEach(t=>{ counts[t.dueDate]=(counts[t.dueDate]||0)+1; });
+  const monthName=first.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const total=open.filter(t=>t.dueDate>=fmtYMD(y,m,1) && t.dueDate<=fmtYMD(y,m,daysInMonth)).length;
+  let html=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <button class="btn btsm btgh" onclick="taskCalShift(-1)">&#8592;</button>
+      <div style="font-size:.8rem;font-weight:700;">${monthName}</div>
+      <button class="btn btsm btgh" onclick="taskCalShift(1)">&#8594;</button>
+    </div>
+    <div style="font-size:.66rem;color:var(--tx3);text-align:center;margin-bottom:9px;">${total} scheduled task${total!==1?'s':''} this month</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">`;
+  ['M','T','W','T','F','S','S'].forEach(d=>{ html+=`<div style="text-align:center;font-size:.55rem;color:var(--tx3);font-weight:700;padding-bottom:2px;">${d}</div>`; });
+  for(let i=0;i<startDow;i++) html+=`<div></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const ds=fmtYMD(y,m,day); const c=counts[ds]||0; const isToday=ds===td; const sel=ds===taskCalSelected;
+    html+=`<div onclick="taskCalSelect('${ds}')" style="aspect-ratio:1;border-radius:8px;border:1px solid ${sel?'var(--a)':isToday?'var(--a2)':'var(--bdr)'};background:${sel?'rgba(232,98,42,.14)':c?'rgba(232,98,42,.06)':'var(--sur)'};display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:2px;">
+      <span style="font-size:.66rem;font-weight:${isToday?'800':'500'};color:${isToday?'var(--a2)':'var(--tx)'};">${day}</span>
+      ${c?`<span style="font-size:.5rem;font-weight:700;color:#fff;background:var(--a);border-radius:99px;min-width:13px;text-align:center;padding:0 3px;margin-top:1px;">${c}</span>`:''}
+    </div>`;
+  }
+  html+=`</div>`;
+  if(taskCalSelected){
+    const dayTasks=open.filter(t=>t.dueDate===taskCalSelected);
+    html+=`<div style="margin-top:14px;">
+      <div style="font-size:.72rem;font-weight:700;margin-bottom:8px;">${formatDateShort(taskCalSelected)} · ${dayTasks.length} task${dayTasks.length!==1?'s':''}</div>
+      ${dayTasks.length? dayTasks.map(t=>renderTaskRow(t)).join('') : `<div style="font-size:.75rem;color:var(--tx3);">No tasks on this day.</div>`}
+    </div>`;
+  } else {
+    html+=`<div style="font-size:.66rem;color:var(--tx3);text-align:center;margin-top:10px;">Tap a day to see its tasks.</div>`;
+  }
+  el.innerHTML=html;
+  if(taskCalSelected) wireTaskSwipeGestures();
 }
 
 function wireTaskSwipeGestures(){
@@ -3491,7 +3536,8 @@ function renderTaskRow(t){
       </div>
       <div style="flex:1;min-width:0;" onclick="toggleTaskSwipe(this)">
         <div class="drag-label" style="font-size:.83rem;font-weight:500;${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;align-items:center;">
+          ${(()=>{ const p=taskPriority(t); if(!p||t.done) return ''; const pm=TASK_PRI[p]; return `<span style="font-size:.58rem;font-weight:700;color:${pm.color};background:${pm.color}1a;border-radius:99px;padding:1px 7px;">${pm.label}</span>`; })()}
           ${t.dueDate?`<span style="font-size:.62rem;font-weight:600;color:${dateColor};">${overdue?'⚠️ Overdue':futureDue?'📅 '+formatDateShort(t.dueDate):dueToday?'📍 Today':t.dueDate}</span>`:''}
           ${t.done&&t.doneAt?`<span style="font-size:.6rem;color:var(--green);">✓ Done ${t.doneAt}</span>`:''}
         </div>
@@ -3576,15 +3622,23 @@ function openNewTaskModal(prefill){
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="nt-name" placeholder="What needs to be done…" value="${prefill||''}"/></div>
     <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="nt-due"/></div>
-    <div class="igrp"><label class="ilbl">Project <span style="color:var(--red);">*</span></label>
+    <div class="igrp"><label class="ilbl">Priority (optional)</label>
+      <select class="inp" id="nt-pri" style="appearance:none;">
+        <option value="">None</option>
+        <option value="high">🔴 High</option>
+        <option value="med">🟠 Medium</option>
+        <option value="low">🔵 Low</option>
+      </select>
+    </div>
+    <div class="igrp"><label class="ilbl">Project (optional)</label>
       <select class="inp" id="nt-proj" style="appearance:none;" onchange="onTaskProjChange()">
-        <option value="">— select project —</option>
+        <option value="">— none —</option>
         ${projs.map(p=>`<option value="${p.id}" data-goal="${p.goalId||''}">${p.name}</option>`).join('')}
       </select>
     </div>
-    <div class="igrp"><label class="ilbl">Goal <span style="color:var(--red);">*</span></label>
+    <div class="igrp"><label class="ilbl">Goal (optional)</label>
       <select class="inp" id="nt-goal" style="appearance:none;" onchange="onTaskGoalChange()">
-        <option value="">— select goal —</option>
+        <option value="">— none —</option>
         ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
       </select>
     </div>
@@ -3693,11 +3747,10 @@ function saveNewTask(){
   if(!name){ toast('Enter a task name'); return; }
   const goalId  = document.getElementById('nt-goal')?.value||null;
   const projId  = document.getElementById('nt-proj')?.value||null;
-  if(!goalId){ toast('Please select a goal'); return; }
-  if(!projId){ toast('Please select a project'); return; }
   const dueDate = document.getElementById('nt-due')?.value||null;
+  const priority= document.getElementById('nt-pri')?.value||'';
   const notes   = document.getElementById('nt-notes')?.value.trim()||'';
-  S.tasks.push({id:uid(),name,dueDate,projId,goalId,notes,done:false,archived:false,createdAt:today()});
+  S.tasks.push({id:uid(),name,dueDate,projId,goalId,priority,notes,done:false,archived:false,createdAt:today()});
   save(); closeModal('modal-main'); buildTasksList(); buildDailyTasks(); toast('Task added ✓');
 }
 
@@ -3716,6 +3769,14 @@ function openTaskEdit(taskId){
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="te-name" value="${t.name}"/></div>
     <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="te-due" value="${t.dueDate||''}"/></div>
+    <div class="igrp"><label class="ilbl">Priority (optional)</label>
+      <select class="inp" id="te-pri" style="appearance:none;">
+        <option value="" ${taskPriority(t)===''?'selected':''}>None</option>
+        <option value="high" ${taskPriority(t)==='high'?'selected':''}>🔴 High</option>
+        <option value="med" ${taskPriority(t)==='med'?'selected':''}>🟠 Medium</option>
+        <option value="low" ${taskPriority(t)==='low'?'selected':''}>🔵 Low</option>
+      </select>
+    </div>
     <div class="igrp"><label class="ilbl">Link to project (optional)</label>
       <select class="inp" id="te-proj" style="appearance:none;">
         <option value="">— no project —</option>
@@ -3739,6 +3800,7 @@ function saveTaskEdit(taskId){
   const name = document.getElementById('te-name')?.value.trim(); if(!name){ toast('Name required'); return; }
   t.name=name;
   t.dueDate=document.getElementById('te-due')?.value||null;
+  t.priority=document.getElementById('te-pri')?.value||'';
   t.projId=document.getElementById('te-proj')?.value||null;
   t.goalId=document.getElementById('te-goal')?.value||null;
   t.notes=document.getElementById('te-notes')?.value.trim()||'';
