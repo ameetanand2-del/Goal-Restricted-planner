@@ -488,14 +488,14 @@ select.inp{appearance:none;}
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <div class="sg5" style="flex:1;margin:0;">
       <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Habits</div></div>
+      <div class="stile" onclick="document.getElementById('study-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
+        <div class="sv" id="hstudy" style="color:var(--purple)">0/0</div>
+        <div class="slb">Study</div>
+      </div>
       <div class="stile"><div class="sv" id="htasks" style="color:var(--teal)">0/0</div><div class="slb">Tasks</div></div>
       <div class="stile" onclick="document.getElementById('chores-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
         <div class="sv" id="hchores" style="color:var(--blue)">0/0</div>
         <div class="slb">Chores</div>
-      </div>
-      <div class="stile" onclick="document.getElementById('study-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
-        <div class="sv" id="hstudy" style="color:var(--purple)">0/0</div>
-        <div class="slb">Study</div>
       </div>
       <div class="stile" onclick="scrollToWeeklyGoals()" style="cursor:pointer;">
         <div class="sv" id="hweekly" style="color:var(--a2)">0/0</div>
@@ -514,7 +514,6 @@ select.inp{appearance:none;}
       <div class="rc"><div class="rpct" id="ring-pct">0%</div><div class="rlbl">today</div></div>
     </div>
     <div style="flex:1;">
-      <div style="font-size:.7rem;color:var(--tx2);margin-bottom:5px;" id="ring-summary">No habits tracked today</div>
       <div id="ring-group-bars"></div>
     </div>
   </div>
@@ -535,6 +534,9 @@ select.inp{appearance:none;}
 
   <!-- Habits list (grouped) -->
   <div id="daily-habits-list"></div>
+
+  <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
+  <div id="study-section"></div>
 
   <!-- Today's tasks -->
   <div id="daily-tasks-wrap" style="display:none;">
@@ -564,11 +566,11 @@ select.inp{appearance:none;}
     </div>
   </div>
 
-  <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
-  <div id="study-section"></div>
-
   <!-- Today's chores (recurring, max 3) -->
   <div id="chores-section"></div>
+
+  <!-- Night routine (time-of-day mode only — always rendered last) -->
+  <div id="night-routine-section"></div>
 
   <!-- Reflection questions (configured in Settings > Prefs) -->
   <div id="eod-section"></div>
@@ -1885,7 +1887,31 @@ function openAddWeeklyGoal(cat){
   const weekKey = getCurrentWeekKey();
   const existingIds = getWeeklyGoals(weekKey).map(wg => wg.targetId);
   
-  let html = `<div style="max-height:60vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">`;
+  const attachOpts = `<option value="">No project / goal</option>`
+    + (goals.length?`<optgroup label="Goals">${goals.map(g=>`<option value="goal:${g.id}">${escHtml(g.name)}</option>`).join('')}</optgroup>`:'')
+    + (projects.length?`<optgroup label="Projects">${projects.map(p=>`<option value="proj:${p.id}">${escHtml(p.name)}</option>`).join('')}</optgroup>`:'');
+  let html = `<div style="max-height:60vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    <div style="border:1px solid var(--bdr);border-radius:var(--r2);padding:12px;margin-bottom:12px;background:var(--bg2);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;gap:8px;flex-wrap:wrap;">
+        <div style="font-size:.62rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;">✏️ Create &amp; add to focus</div>
+        <div style="display:flex;background:var(--bg);border:1px solid var(--bdr);border-radius:99px;overflow:hidden;">
+          <button id="wg-cat-personal" onclick="wgSetCreateCat('personal')" style="font-size:.62rem;font-weight:700;padding:5px 11px;border:none;cursor:pointer;background:${pendingWeeklyCat==='personal'?'var(--a)':'transparent'};color:${pendingWeeklyCat==='personal'?'#fff':'var(--tx2)'};">🏠 Personal</button>
+          <button id="wg-cat-job" onclick="wgSetCreateCat('job')" style="font-size:.62rem;font-weight:700;padding:5px 11px;border:none;cursor:pointer;background:${pendingWeeklyCat==='job'?'var(--a)':'transparent'};color:${pendingWeeklyCat==='job'?'#fff':'var(--tx2)'};">💼 Job</button>
+        </div>
+      </div>
+      <input id="wg-task-name" class="inp" placeholder="Task name…" style="width:100%;margin-bottom:7px;font-size:.8rem;">
+      <select id="wg-task-attach" class="inp" style="width:100%;margin-bottom:7px;font-size:.78rem;">${attachOpts}</select>
+      <textarea id="wg-task-notes" class="inp" placeholder="Notes (optional)…" rows="2" style="width:100%;margin-bottom:9px;font-size:.78rem;resize:vertical;"></textarea>
+      <button class="btn btp bfu" onclick="wgCreateTask()" style="margin-bottom:11px;">+ Create task &amp; add</button>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input id="wg-new-project" class="inp" placeholder="Or new project…" style="flex:1;font-size:.78rem;" onkeydown="if(event.key==='Enter')wgQuickCreate('project')">
+        <button class="btn btsm btgh" style="font-size:.62rem;white-space:nowrap;" onclick="wgQuickCreate('project')">+ Project</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <input id="wg-new-goal" class="inp" placeholder="Or new goal…" style="flex:1;font-size:.78rem;" onkeydown="if(event.key==='Enter')wgQuickCreate('goal')">
+        <button class="btn btsm btgh" style="font-size:.62rem;white-space:nowrap;" onclick="wgQuickCreate('goal')">+ Goal</button>
+      </div>
+    </div>`;
   
   // Build structured hierarchy: each goal with its projects and tasks underneath
   goals.forEach((g, gIdx) => {
@@ -2017,6 +2043,40 @@ function openAddWeeklyGoal(cat){
   html += `</div>`;
   
   showModal('Add Weekly Goal', html, [{label:'Close', cls:'btgh'}]);
+}
+
+function wgSetCreateCat(cat){
+  pendingWeeklyCat = (cat==='job') ? 'job' : 'personal';
+  const p=document.getElementById('wg-cat-personal'), j=document.getElementById('wg-cat-job');
+  if(p){ p.style.background = pendingWeeklyCat==='personal'?'var(--a)':'transparent'; p.style.color = pendingWeeklyCat==='personal'?'#fff':'var(--tx2)'; }
+  if(j){ j.style.background = pendingWeeklyCat==='job'?'var(--a)':'transparent'; j.style.color = pendingWeeklyCat==='job'?'#fff':'var(--tx2)'; }
+}
+
+function wgCreateTask(){
+  const nameEl = document.getElementById('wg-task-name');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if(!name){ toast('Enter a task name'); if(nameEl) nameEl.focus(); return; }
+  const attach = document.getElementById('wg-task-attach')?.value || '';
+  const notes = document.getElementById('wg-task-notes')?.value.trim() || '';
+  let goalId=null, projId=null;
+  if(attach.startsWith('goal:')) goalId = attach.slice(5);
+  else if(attach.startsWith('proj:')){ projId = attach.slice(5); const p=S.projects.find(x=>x.id===projId); if(p) goalId = p.goalId||null; }
+  const id = uid();
+  S.tasks.push({id,name,dueDate:'',projId,goalId,notes,done:false,archived:false,createdAt:today()});
+  save();
+  addWeeklyGoal('task', id); // uses pendingWeeklyCat (set via the toggle), then closes the picker
+}
+
+function wgQuickCreate(type){
+  const inp = document.getElementById('wg-new-'+type); if(!inp) return;
+  const name = inp.value.trim();
+  if(!name){ toast('Enter a name'); inp.focus(); return; }
+  const id = uid();
+  if(type==='task') S.tasks.push({id,name,dueDate:'',projId:null,goalId:null,notes:'',done:false,archived:false,createdAt:today()});
+  else if(type==='project') S.projects.push({id,name,goalId:null,deadline:'',archived:false,status:'active',createdAt:today()});
+  else if(type==='goal') S.goals.push({id,name,area:'Other',archived:false,future:false,createdAt:today()});
+  save();
+  addWeeklyGoal(type, id); // adds to current week's focus (pendingWeeklyCat) and closes the picker
 }
 
 function addWeeklyGoal(type, targetId){
@@ -2184,6 +2244,7 @@ function setHabitTod(habId, key){
 
 function buildDailyHabits(){
   const el = document.getElementById('daily-habits-list'); if(!el) return;
+  const nightSec = document.getElementById('night-routine-section'); if(nightSec) nightSec.innerHTML='';
   const allHabits = getActiveHabits();
   const td = today();
   const locked = S.completedDays.includes(td);
@@ -2221,6 +2282,7 @@ function buildDailyHabits(){
     const byKey={};
     habits.forEach(h=>{ const k=(h.tod && TOD_BUCKETS.some(b=>b.key===h.tod && b.key!=='none'))?h.tod:'none'; (byKey[k]=byKey[k]||[]).push(h); });
     let gHtml='<div id="daily-habit-tod">'; let gc=0;
+    let nightHtml='';
     const todArrays=[];
     TOD_BUCKETS.forEach(b=>{
       const list=byKey[b.key]||[];
@@ -2230,7 +2292,7 @@ function buildDailyHabits(){
       const skipped=list.filter(h=>getHabitState(td,h.id)==='skipped').length;
       const collapsed = !!todCollapsed[b.key];
       const rows=list.length ? list.map(h=>renderHabitRow(h,td,locked)).join('') : `<div class="chore-empty" style="padding:12px;">Nothing tagged ${b.label.toLowerCase()}.</div>`;
-      gHtml+=`<div class="habit-group-card" style="margin-bottom:8px;border:1px solid ${b.color}33;border-radius:var(--r2);overflow:hidden;">
+      const card=`<div class="habit-group-card" style="margin-bottom:8px;border:1px solid ${b.color}33;border-radius:var(--r2);overflow:hidden;">
         <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:${b.color}14;user-select:none;" onclick="toggleTodBucket('${b.key}')">
           <span style="font-size:.95rem;">${b.emoji}</span>
           <div style="flex:1;font-size:.78rem;font-weight:700;">${b.label}</div>
@@ -2239,10 +2301,12 @@ function buildDailyHabits(){
         </div>
         <div id="htod-body-${b.key}" style="display:${collapsed?'none':'block'};"><div class="cks" id="htod-inner-${gc}">${rows}</div></div>
       </div>`;
+      if(b.key==='night') nightHtml+=card; else gHtml+=card; // night routine renders last, after chores
       gc++;
     });
     gHtml+='</div>';
     el.innerHTML=gHtml;
+    if(nightSec) nightSec.innerHTML = nightHtml ? `<div id="daily-habit-tod-night">${nightHtml}</div>` : '';
     if(!locked){
       const persist=()=>{ S.dailyHabitOrder = todArrays.flatMap(a=>a.map(h=>h.id)); save(); buildDailyHabits(); updateRing(); };
       todArrays.forEach((arr,i)=>{ if(arr.length) makeDraggable('#htod-inner-'+i, ()=>arr, persist); });
