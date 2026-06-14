@@ -3927,7 +3927,7 @@ function buildTrackerHabits(){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="sl" style="margin:0;">&#9726; Consistency</div>
-        <button onclick="toggleHeatmapFlat()" style="font-size:.6rem;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid ${heatmapFlat?'var(--a)':'var(--bdr)'};background:${heatmapFlat?'var(--a)':'var(--sur)'};color:${heatmapFlat?'#fff':'var(--tx2)'};white-space:nowrap;">Habits by %</button>
+        <button onclick="toggleHeatmapFlat()" style="font-size:.6rem;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid ${heatmapFlat?'var(--a)':'var(--bdr)'};background:${heatmapFlat?'var(--a)':'var(--sur)'};color:${heatmapFlat?'#fff':'var(--tx2)'};white-space:nowrap;">⚖ By weight</button>
       </div>
       <div style="display:flex;align-items:center;gap:7px;">
         <button class="btn btsm btgh" onclick="setHeatmapOffset(heatmapOffset-1)">&#8592;</button>
@@ -4402,9 +4402,10 @@ function renderHeatmap(habits){
   if(nxt) nxt.style.opacity=heatmapOffset===0?'0.3':'1';
   const DAY_LABELS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const groups=habitGroups(habits);
+  const ewMap=effectiveHabitWeights(habits); // same weights set in the daily weighting
   const habitRow=(h,showPct)=>{
     const col=habitColor(h);
-    const pctBadge = showPct ? `<span style="display:inline-block;min-width:32px;text-align:right;font-size:.6rem;font-weight:800;color:${col};margin-right:6px;">${habitConsistencyPct(h)}%</span>` : '';
+    const pctBadge = showPct ? `<span style="display:inline-block;min-width:32px;text-align:right;font-size:.6rem;font-weight:800;color:${col};margin-right:6px;">${Math.round(ewMap[h.id]||0)}%</span>` : '';
     return `<tr><td class="tracker-habit-name" onclick="this.classList.toggle('expanded')" title="Tap to expand">${pctBadge}${h.name}</td>
         ${days.map(d=>{
           const state=getHabitState(d,h.id), future=d>td;
@@ -4441,8 +4442,8 @@ function renderHeatmap(habits){
     ${DAY_LABELS.map((d,i)=>`<th style="text-align:center;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 2px;min-width:34px;"><div>${d}</div><div style="font-size:.54rem;opacity:.6;">${fmt(days[i]).split(' ')[0]}</div></th>`).join('')}
   </tr></thead><tbody>`;
   if(heatmapFlat){
-    // Flat: all habits, no categories, ordered by consistency % (high → low)
-    const all=habits.slice().sort((a,b)=>habitConsistencyPct(b)-habitConsistencyPct(a));
+    // Flat: all habits, no categories, ordered by daily weight (high → low)
+    const all=habits.slice().sort((a,b)=>(ewMap[b.id]||0)-(ewMap[a.id]||0));
     all.forEach(h=>{ html+=habitRow(h,true); });
   } else {
     groups.forEach((g,idx)=>{
