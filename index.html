@@ -3727,6 +3727,7 @@ function buildTracker(){ buildTrackerHabits(); }
 let dashWeeks     = 6;
 let dashHabits    = [];
 let heatmapOffset = 0;
+let heatmapFlat = (typeof localStorage!=='undefined') && localStorage.getItem('heatmapFlat')==='true';
 let trendChart    = null;
 let perfSort      = 'project';
 let trendDropOpen = false;
@@ -3756,10 +3757,44 @@ function habitGroups(habits){
   const groups={};
   habits.forEach(h=>{
     const key=h.projId||h.goalId||'__s';
-    if(!groups[key]) groups[key]={label:groupLabel(h),color:habitColor(h),habits:[]};
+    if(!groups[key]) groups[key]={key,label:groupLabel(h),color:habitColor(h),habits:[]};
     groups[key].habits.push(h);
   });
-  return Object.values(groups);
+  const arr=Object.values(groups);
+  const order=S.trackerCatOrder||[];
+  arr.sort((a,b)=>{
+    const ai=order.indexOf(a.key), bi=order.indexOf(b.key);
+    if(ai!==-1 && bi!==-1) return ai-bi;
+    if(ai!==-1) return -1;
+    if(bi!==-1) return 1;
+    return 0; // unknown keys keep insertion order
+  });
+  return arr;
+}
+function moveTrackerCat(key, dir){
+  const habits=S.habits.filter(h=>!h.archived && !isHabitFromFutureGoal(h));
+  const keys=habitGroups(habits).map(g=>g.key);
+  const i=keys.indexOf(key); if(i<0) return;
+  const j=i+dir; if(j<0||j>=keys.length) return;
+  [keys[i],keys[j]]=[keys[j],keys[i]];
+  S.trackerCatOrder=keys; save();
+  renderHeatmap(habits);
+}
+function habitConsistencyPct(h){
+  const td=today();
+  let appl=0, done=0;
+  for(let i=0;i<30;i++){
+    const d=addDaysStr(td,-i);
+    if(!shouldShowHabitOnDay(h,d)) continue;
+    appl++;
+    if(getHabitState(d,h.id)==='done') done++;
+  }
+  return appl?Math.round(done/appl*100):0;
+}
+function toggleHeatmapFlat(){
+  heatmapFlat=!heatmapFlat;
+  try{ localStorage.setItem('heatmapFlat', heatmapFlat); }catch(e){}
+  buildTrackerHabits();
 }
 
 function buildTrackerHabits(){
@@ -3889,8 +3924,11 @@ function buildTrackerHabits(){
   </div>
 
   <div style="margin-bottom:20px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div class="sl" style="margin:0;">&#9726; Consistency</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="sl" style="margin:0;">&#9726; Consistency</div>
+        <button onclick="toggleHeatmapFlat()" style="font-size:.6rem;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid ${heatmapFlat?'var(--a)':'var(--bdr)'};background:${heatmapFlat?'var(--a)':'var(--sur)'};color:${heatmapFlat?'#fff':'var(--tx2)'};white-space:nowrap;">Habits by %</button>
+      </div>
       <div style="display:flex;align-items:center;gap:7px;">
         <button class="btn btsm btgh" onclick="setHeatmapOffset(heatmapOffset-1)">&#8592;</button>
         <div id="heatmap-week-label" style="font-size:.7rem;font-weight:600;color:var(--tx2);min-width:120px;text-align:center;"></div>
@@ -4364,15 +4402,10 @@ function renderHeatmap(habits){
   if(nxt) nxt.style.opacity=heatmapOffset===0?'0.3':'1';
   const DAY_LABELS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const groups=habitGroups(habits);
-  let html=`<table style="border-collapse:separate;border-spacing:3px;min-width:100%;"><thead><tr>
-    <th style="text-align:left;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 10px 3px 0;min-width:100px;">Habit</th>
-    ${DAY_LABELS.map((d,i)=>`<th style="text-align:center;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 2px;min-width:34px;"><div>${d}</div><div style="font-size:.54rem;opacity:.6;">${fmt(days[i]).split(' ')[0]}</div></th>`).join('')}
-  </tr></thead><tbody>`;
-  groups.forEach(g=>{
-    html+=`<tr><td colspan="8" style="padding:8px 0 3px;font-size:.62rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.07em;">${g.label}</td></tr>`;
-    g.habits.forEach(h=>{
-      const col=habitColor(h);
-      html+=`<tr><td class="tracker-habit-name" onclick="this.classList.toggle('expanded')" title="Tap to expand">${h.name}</td>
+  const habitRow=(h,showPct)=>{
+    const col=habitColor(h);
+    const pctBadge = showPct ? `<span style="display:inline-block;min-width:32px;text-align:right;font-size:.6rem;font-weight:800;color:${col};margin-right:6px;">${habitConsistencyPct(h)}%</span>` : '';
+    return `<tr><td class="tracker-habit-name" onclick="this.classList.toggle('expanded')" title="Tap to expand">${pctBadge}${h.name}</td>
         ${days.map(d=>{
           const state=getHabitState(d,h.id), future=d>td;
           let bg='rgba(128,128,128,.1)', icon='', cursor='pointer';
@@ -4402,8 +4435,27 @@ function renderHeatmap(habits){
           return `<td style="text-align:center;padding:2px;"><div ${clickHandler} ${interactiveAttr} style="width:30px;height:28px;border-radius:6px;background:${bg};margin:0 auto;display:flex;align-items:center;justify-content:center;cursor:${cursor};transition:transform .1s;">${icon}</div></td>`;
         }).join('')}
       </tr>`;
+  };
+  let html=`<table style="border-collapse:separate;border-spacing:3px;min-width:100%;"><thead><tr>
+    <th style="text-align:left;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 10px 3px 0;min-width:100px;">Habit</th>
+    ${DAY_LABELS.map((d,i)=>`<th style="text-align:center;font-size:.6rem;color:var(--tx3);font-weight:600;padding:3px 2px;min-width:34px;"><div>${d}</div><div style="font-size:.54rem;opacity:.6;">${fmt(days[i]).split(' ')[0]}</div></th>`).join('')}
+  </tr></thead><tbody>`;
+  if(heatmapFlat){
+    // Flat: all habits, no categories, ordered by consistency % (high → low)
+    const all=habits.slice().sort((a,b)=>habitConsistencyPct(b)-habitConsistencyPct(a));
+    all.forEach(h=>{ html+=habitRow(h,true); });
+  } else {
+    groups.forEach((g,idx)=>{
+      html+=`<tr><td colspan="8" style="padding:8px 0 3px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="flex:1;font-size:.62rem;font-weight:700;color:${g.color};text-transform:uppercase;letter-spacing:.07em;">${g.label}</span>
+          <button onclick="moveTrackerCat('${g.key}',-1)" style="background:var(--sur);border:1px solid var(--bdr);border-radius:5px;width:22px;height:20px;font-size:.58rem;color:var(--tx2);cursor:pointer;${idx===0?'opacity:.3;pointer-events:none;':''}">▲</button>
+          <button onclick="moveTrackerCat('${g.key}',1)" style="background:var(--sur);border:1px solid var(--bdr);border-radius:5px;width:22px;height:20px;font-size:.58rem;color:var(--tx2);cursor:pointer;${idx===groups.length-1?'opacity:.3;pointer-events:none;':''}">▼</button>
+        </div>
+      </td></tr>`;
+      g.habits.forEach(h=>{ html+=habitRow(h,false); });
     });
-  });
+  }
   html+=`</tbody></table>`;
   
   // Add legend
