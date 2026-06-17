@@ -518,6 +518,7 @@ select.inp{appearance:none;}
     </div>
     <div style="flex:1;">
       <div id="ring-group-bars"></div>
+      <div id="ring-target" style="font-size:.66rem;font-weight:700;margin-top:7px;display:none;"></div>
     </div>
   </div>
 
@@ -2526,6 +2527,7 @@ function openWeightPicker(habId){
     const w = habitWeight(h);
     const hl = h.id===habId;
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px ${hl?'7px':'2px'};border-bottom:1px solid var(--bdr);${hl?'background:rgba(232,98,42,.07);border-radius:8px;':''}">
+      <button id="wtstar-${h.id}" onclick="toggleHabitImportant('${h.id}')" title="Mark as a must-do habit" style="background:none;border:none;font-size:.95rem;line-height:1;cursor:pointer;padding:0 1px;color:${h.important?'var(--a)':'var(--tx3)'};">${h.important?'★':'☆'}</button>
       <div style="flex:1;min-width:0;font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.name}</div>
       <span id="wtauto-${h.id}" style="font-size:.6rem;color:var(--tx3);min-width:62px;text-align:right;"></span>
       <div style="display:flex;align-items:center;gap:3px;">
@@ -2537,7 +2539,8 @@ function openWeightPicker(habId){
   const m=document.createElement('div'); m.className='modal-bg open'; m.id='weight-modal';
   m.innerHTML=`<div class="modal" style="max-width:440px;max-height:86vh;display:flex;flex-direction:column;">
     <div style="font-size:.95rem;font-weight:700;margin-bottom:3px;">Habit weights</div>
-    <div style="font-size:.72rem;color:var(--tx2);line-height:1.5;margin-bottom:10px;">Give each habit a share of your daily 100%. Leave one blank for <b>auto</b> — auto habits split whatever's left equally.</div>
+    <div style="font-size:.72rem;color:var(--tx2);line-height:1.5;margin-bottom:10px;">Give each habit a share of your daily 100%. Leave one blank for <b>auto</b> — auto habits split whatever's left equally. Tap <span style="color:var(--a);">★</span> to mark a habit as <b>must-do</b>.</div>
+    <div id="wt-target" style="margin-bottom:10px;padding:9px 11px;border-radius:10px;background:rgba(232,98,42,.08);color:var(--a);font-size:.72rem;font-weight:700;text-align:center;display:none;"></div>
     <div style="overflow-y:auto;flex:1;">${rows}</div>
     <div id="wt-summary" style="margin-top:12px;padding:10px;border-radius:10px;font-size:.74rem;font-weight:700;text-align:center;"></div>
     <div style="display:flex;gap:8px;margin-top:12px;">
@@ -2563,6 +2566,13 @@ function recalcWeightTotals(){
   else if(explicitSum===100){ bg='rgba(34,197,94,.12)'; col='var(--green)'; msg=`✓ Perfect — 100% assigned`; }
   else { bg='rgba(245,166,35,.12)'; col='var(--a2)'; msg=`Only ${explicitSum}% of 100% assigned — ${remaining}% unused`; }
   sum.style.background=bg; sum.style.color=col; sum.textContent=msg;
+  const tgtEl=document.getElementById('wt-target');
+  if(tgtEl){
+    let it=0, ic=0;
+    habits.forEach(h=>{ if(h.important){ ic++; const v=parseInt(document.getElementById('wtin-'+h.id)?.value)||0; it += v>0?v:share; } });
+    if(ic){ tgtEl.style.display=''; tgtEl.textContent=`🎯 Must-do target: ${Math.round(it)}% · ${ic} habit${ic>1?'s':''} you can't miss`; }
+    else { tgtEl.style.display='none'; tgtEl.textContent=''; }
+  }
 }
 function saveAllHabitWeights(){
   const habits=getActiveHabits();
@@ -3047,6 +3057,36 @@ function undoTask(taskId){
   updateCompleteDayBtn();
 }
 
+function dayMustDo(){
+  const td = today();
+  const active = getActiveHabits();
+  const ew = effectiveHabitWeights(active);
+  const imp = active.filter(h=>h.important && shouldShowHabitToday(h));
+  let target=0; imp.forEach(h=>{ target += ew[h.id]||0; });
+  const doneImp = imp.filter(h=>getHabitState(td,h.id)==='done').length;
+  const met = imp.length>0 && doneImp===imp.length;
+  return { count:imp.length, target:Math.round(target), doneImp, met };
+}
+function updateRingTarget(){
+  const el = document.getElementById('ring-target'); if(!el) return;
+  const md = dayMustDo();
+  if(!md.count){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='';
+  const col = md.met ? 'var(--green)' : 'var(--a2)';
+  el.innerHTML = `<span style="color:var(--a);">🎯 Must-do ${md.target}%</span> · <span style="color:${col};">${md.met?'✓ Met':'✗ Missed'} (${md.doneImp}/${md.count})</span>`;
+  // Snapshot today's target so past days stay frozen if weights change later
+  if(!S.dayTarget) S.dayTarget={};
+  S.dayTarget[today()] = { pct:md.target, met:md.met };
+}
+function toggleHabitImportant(habId){
+  const h = S.habits.find(x=>x.id===habId); if(!h) return;
+  h.important = !h.important;
+  save();
+  const b = document.getElementById('wtstar-'+habId);
+  if(b){ b.textContent = h.important?'★':'☆'; b.style.color = h.important?'var(--a)':'var(--tx3)'; }
+  recalcWeightTotals();
+}
+
 function updateRing(){
   const allHabits = getActiveHabits();
   const td = today();
@@ -3085,6 +3125,8 @@ function updateRing(){
       rs.textContent = 'No habits tracked today';
     }
   }
+
+  updateRingTarget();
 
   // Group bars by project/goal (only for today's habits)
   const bars=document.getElementById('ring-group-bars'); if(!bars) return;
@@ -3131,7 +3173,11 @@ function buildYearCountdown(){
   const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const years = [2026,2027,2028,2029,2030];
   const R = 16, C = 2*Math.PI*R;
-  let html = `<div style="display:flex;gap:4px;align-items:flex-start;">`;
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+    <span style="font-size:.55rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;">Years left</span>
+    <button onclick="toggleYearCountdown()" title="Hide this section" style="font-size:.58rem;color:var(--tx3);background:none;border:none;cursor:pointer;padding:0;">Hide ✕</button>
+  </div>
+  <div style="display:flex;gap:4px;align-items:flex-start;">`;
   years.forEach(y=>{
     const start = new Date(y,0,1);
     const nextYear = new Date(y+1,0,1);
