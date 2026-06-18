@@ -2508,7 +2508,7 @@ function renderHabitRow(h, date, locked){
     <div class="cbox" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}">✓</div>
     <div class="cdot" style="background:${col}" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}"></div>
     <div style="flex:1;" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}">
-      <div class="drag-label cil">${h.name}</div>
+      <div class="drag-label cil">${h.important?`<span onclick="event.stopPropagation();toggleHabitImportant('${h.id}')" style="color:var(--a);cursor:pointer;" title="Must-do habit">★</span> `:''}${h.name}</div>
       <div class="cis">${freq}${h.hint?' · '+h.hint.slice(0,42):''} · <span onclick="event.stopPropagation();openWeightPicker('${h.id}')" style="color:var(--a);font-weight:700;cursor:pointer;">⚖ ${Math.round(ew)}%${isAuto?' auto':''}</span></div>
       ${isSkip&&h.reasonEnabled?`<div class="reason-wrap show" onclick="event.stopPropagation()">
         <textarea class="reason-inp" id="r-${h.id}" placeholder="Why did you skip?" onchange="saveReason('${h.id}')">${reason}</textarea>
@@ -3084,7 +3084,9 @@ function toggleHabitImportant(habId){
   save();
   const b = document.getElementById('wtstar-'+habId);
   if(b){ b.textContent = h.important?'★':'☆'; b.style.color = h.important?'var(--a)':'var(--tx3)'; }
-  recalcWeightTotals();
+  if(document.getElementById('wt-summary')) recalcWeightTotals();
+  buildDailyHabits();
+  updateRingTarget();
 }
 
 function updateRing(){
