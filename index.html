@@ -178,6 +178,22 @@ input,textarea,select{font-family:inherit;}
 .entity-body{padding:6px 13px 13px;background:var(--sur);}
 .swipe-container{position:relative;overflow:hidden;border-radius:var(--r2);}
 .swipe-content{position:relative;background:var(--sur);transition:transform .25s ease;z-index:2;}
+.focus-bar-inner{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1.5px solid var(--a);border-radius:var(--r2);background:rgba(232,98,42,.07);}
+.focus-chip{font-size:.64rem;font-weight:600;color:var(--tx);background:var(--sur);border:1px solid var(--bdr);border-radius:99px;padding:2px 8px;display:inline-flex;align-items:center;white-space:nowrap;}
+#focus-overlay{position:fixed;inset:0;z-index:900;background:rgba(15,16,20,.62);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:22px;}
+.focus-card{width:100%;max-width:420px;background:var(--bg);border:1px solid var(--bdr);border-radius:18px;padding:20px 18px;box-shadow:0 18px 50px rgba(0,0,0,.4);}
+.focus-head{font-size:1.05rem;font-weight:800;color:var(--tx);text-align:center;}
+.focus-sub{font-size:.7rem;color:var(--tx3);text-align:center;margin:3px 0 16px;}
+.focus-items{display:flex;flex-direction:column;gap:9px;margin-bottom:16px;}
+.focus-item{display:flex;align-items:center;gap:11px;padding:14px 13px;border:1.5px solid var(--bdr);border-radius:13px;background:var(--sur);cursor:pointer;transition:all .15s;}
+.focus-item.done{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4);}
+.focus-check{width:24px;height:24px;border-radius:7px;border:2px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--tx3);flex-shrink:0;}
+.focus-item.done .focus-check{background:var(--green);border-color:var(--green);color:#fff;}
+.focus-name{flex:1;font-size:.9rem;font-weight:700;color:var(--tx);}
+.focus-item.done .focus-name{text-decoration:line-through;color:var(--tx3);}
+.focus-type{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);background:var(--bg2);border-radius:99px;padding:2px 8px;}
+.focus-hint{font-size:.7rem;color:var(--tx3);text-align:center;margin-bottom:10px;}
+.focus-leave{display:block;width:100%;background:none;border:none;color:var(--tx3);font-size:.66rem;cursor:pointer;padding:8px;margin-top:6px;}
 .swipe-actions{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--sur);z-index:1;opacity:0;transition:opacity .15s ease;}
 .swipe-container.swiped .swipe-actions{opacity:1;}
 .swipe-container.swiped .swipe-content{transform:translateX(-260px);}
@@ -522,6 +538,9 @@ select.inp{appearance:none;}
     </div>
   </div>
 
+  <!-- Focus queue bar (items swiped right land here) -->
+  <div id="focus-bar" style="display:none;margin-bottom:9px;"></div>
+
   <!-- Plan your day section (for non-daily habits) -->
   <div id="plan-day-section"></div>
 
@@ -750,6 +769,9 @@ select.inp{appearance:none;}
 </div></div>
 
 </div><!-- end scroll -->
+
+<!-- Focus mode lock overlay -->
+<div id="focus-overlay" style="display:none;"></div>
 
 <!-- Floating Action Button (Tasks) -->
 <div id="fab-container" style="display:none;">
@@ -1075,6 +1097,9 @@ function buildDailyView(){
   updateRing();
   updateHeroStats();
   buildYearCountdown();
+  buildFocusBar();
+  renderFocusOverlay();
+  wireFocusSwipe();
   updateCompleteDayBtn();
 }
 
@@ -2503,7 +2528,7 @@ function renderHabitRow(h, date, locked){
   const shownToday = getActiveHabits().filter(x=>shouldShowHabitOnDay(x,date));
   const ew = effectiveHabitWeights(shownToday)[h.id] || 0;
   const isAuto = habitWeight(h)<=0;
-  return `<div class="ci drag-item${isDone?' done':isSkip?' skipped':''}" data-id="${h.id}">
+  return `<div class="ci drag-item${isDone?' done':isSkip?' skipped':''}" data-id="${h.id}" data-ftype="habit">
     ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.75rem;padding:4px 5px 4px 0;">&#9776;</span>`}
     <div class="cbox" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}">✓</div>
     <div class="cdot" style="background:${col}" onclick="${locked?'':'toggleHab(\''+h.id+'\')'}"></div>
@@ -2874,7 +2899,7 @@ function renderDailyTaskRow(t){
   const goal = t.goalId?S.goals.find(g=>g.id===t.goalId):null;
   const sub = proj?proj.name:goal?goal.name:'';
   const overdue = t.dueDate < td;
-  return `<div class="task-d drag-item${t.done?' done':''}" data-id="${t.id}">
+  return `<div class="task-d drag-item${t.done?' done':''}" data-id="${t.id}" data-ftype="task">
     <span class="drag-handle" style="font-size:.85rem;color:var(--tx3);padding:6px 8px 6px 2px;cursor:grab;touch-action:none;">☰</span>
     <div class="task-d-check" onclick="event.stopPropagation();toggleDailyTask('${t.id}')">${t.done?'✓':''}</div>
     <div style="flex:1;">
@@ -3055,6 +3080,125 @@ function undoTask(taskId){
   updateRing();
   updateHeroStats();
   updateCompleteDayBtn();
+}
+
+/* ───────────── FOCUS MODE ───────────── */
+const FOCUS_MAX = 3;
+function focusEnsure(){
+  if(!S.focus || typeof S.focus!=='object' || Array.isArray(S.focus)) S.focus={day:today(),items:[],active:false};
+  if(S.focus.day!==today()) S.focus={day:today(),items:[],active:false};
+  if(!Array.isArray(S.focus.items)) S.focus.items=[];
+}
+function focusHas(t,id){ focusEnsure(); return S.focus.items.some(x=>x.t===t&&x.id===id); }
+function focusItemName(it){
+  if(it.t==='habit'){ const h=S.habits.find(x=>x.id===it.id); return h?h.name:'Habit'; }
+  if(it.t==='task'){ const x=S.tasks.find(x=>x.id===it.id); return x?x.name:'Task'; }
+  if(it.t==='chore'){ const x=S.chores.find(x=>x.id===it.id); return x?x.name:'Chore'; }
+  if(it.t==='study'){ const x=(S.studies||[]).find(x=>x.id===it.id); return x?x.name:'Study'; }
+  return '';
+}
+function focusItemDone(it){
+  const td=today();
+  if(it.t==='habit') return getHabitState(td,it.id)==='done';
+  if(it.t==='task'){ const x=S.tasks.find(t=>t.id===it.id); return !!(x&&x.done); }
+  if(it.t==='chore') return !!(S.choreLog && S.choreLog[td] && S.choreLog[td][it.id]);
+  if(it.t==='study') return !!(S.studyLog && S.studyLog[td] && S.studyLog[td][it.id]);
+  return false;
+}
+function focusAllDone(){ focusEnsure(); return S.focus.items.length>0 && S.focus.items.every(focusItemDone); }
+function focusAddItem(t,id){
+  focusEnsure();
+  if(S.focus.active){ toast('Finish your current focus first'); return false; }
+  if(focusHas(t,id)){ toast('Already in focus'); return false; }
+  if(S.focus.items.length>=FOCUS_MAX){ showAlert('Focus is full','You can focus on up to '+FOCUS_MAX+' things at once. Start this set (or remove one) before adding more.'); return false; }
+  S.focus.items.push({t,id}); save();
+  buildFocusBar();
+  toast('Added to focus ✦');
+  return true;
+}
+function focusRemoveItem(t,id){ focusEnsure(); S.focus.items=S.focus.items.filter(x=>!(x.t===t&&x.id===id)); save(); buildFocusBar(); renderFocusOverlay(); }
+function focusEnter(){
+  focusEnsure();
+  if(!S.focus.items.length){ toast('Swipe an item right to add it to focus first'); return; }
+  const list=S.focus.items.map(it=>`<div style="font-size:.82rem;font-weight:600;padding:3px 0;">• ${escHtml(focusItemName(it))}</div>`).join('');
+  showModal('Enter focus mode?',
+    `<div style="font-size:.78rem;color:var(--tx2);line-height:1.5;margin-bottom:8px;">You'll lock onto these ${S.focus.items.length} — the rest of your day stays paused until they're ticked off.</div>${list}
+     <button class="btn btp bfu" style="margin-top:12px;" onclick="closeModal('dyn-modal');startFocus()">Start focusing</button>`,
+    [{label:'Not yet', cls:'btgh'}]);
+}
+function startFocus(){ focusEnsure(); S.focus.active=true; save(); renderFocusOverlay(); }
+function leaveFocus(){ focusEnsure(); S.focus.active=false; save(); renderFocusOverlay(); buildFocusBar(); buildDailyView(); }
+function exitFocus(){
+  focusEnsure();
+  S.focus.active=false;
+  if(focusAllDone()) S.focus.items=[]; // clear the finished batch, ready for a new one
+  save(); renderFocusOverlay(); buildFocusBar(); buildDailyView();
+}
+function focusTick(t,id){
+  const it={t,id};
+  if(t==='habit') toggleHab(id);
+  else if(t==='task') toggleDailyTask(id);
+  else if(t==='chore') toggleChoreDone(id);
+  else if(t==='study') toggleStudyDone(id);
+  renderFocusOverlay();
+}
+function buildFocusBar(){
+  focusEnsure();
+  const el=document.getElementById('focus-bar'); if(!el) return;
+  if(S.focus.active || !S.focus.items.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='';
+  const chips=S.focus.items.map(it=>`<span class="focus-chip">${escHtml(focusItemName(it))}<span onclick="focusRemoveItem('${it.t}','${it.id}')" style="cursor:pointer;opacity:.6;margin-left:5px;">✕</span></span>`).join('');
+  el.innerHTML=`<div class="focus-bar-inner">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1;min-width:0;">
+      <span style="font-size:.7rem;font-weight:800;color:var(--a);white-space:nowrap;">🎯 Focus ${S.focus.items.length}/${FOCUS_MAX}</span>${chips}
+    </div>
+    <button class="btn btp btsm" onclick="focusEnter()" style="white-space:nowrap;flex-shrink:0;">Start →</button>
+  </div>`;
+}
+function renderFocusOverlay(){
+  focusEnsure();
+  const ov=document.getElementById('focus-overlay'); if(!ov) return;
+  if(!S.focus.active){ ov.style.display='none'; ov.innerHTML=''; return; }
+  const items=S.focus.items;
+  const doneCount=items.filter(focusItemDone).length;
+  const allDone=focusAllDone();
+  ov.style.display='flex';
+  ov.innerHTML=`<div class="focus-card">
+    <div class="focus-head">🎯 Focus${allDone?' · done! 🎉':''}</div>
+    <div class="focus-sub">${doneCount}/${items.length} done · everything else is paused</div>
+    <div class="focus-items">
+      ${items.map(it=>{ const d=focusItemDone(it); return `<div class="focus-item${d?' done':''}" onclick="focusTick('${it.t}','${it.id}')">
+        <div class="focus-check">${d?'✓':'●'}</div>
+        <div class="focus-name">${escHtml(focusItemName(it))}</div>
+        <div class="focus-type">${it.t}</div>
+      </div>`; }).join('')}
+    </div>
+    ${allDone
+      ? `<button class="btn btp bfu" onclick="exitFocus()">Pick next focus →</button>`
+      : `<div class="focus-hint">Tick all ${items.length} to unlock the rest of your day.</div>`}
+    <button class="focus-leave" onclick="leaveFocus()">Leave (keep these)</button>
+  </div>`;
+}
+function wireFocusSwipe(){
+  document.querySelectorAll('#page-home [data-ftype]').forEach(row=>{
+    if(row.dataset.fswipe) return; row.dataset.fswipe='1';
+    let sx=0,sy=0,hor=null,active=false;
+    row.addEventListener('touchstart',e=>{ if(e.target.closest('.drag-handle')) return; sx=e.touches[0].clientX; sy=e.touches[0].clientY; hor=null; active=true; },{passive:true});
+    row.addEventListener('touchmove',e=>{
+      if(!active) return;
+      const dx=e.touches[0].clientX-sx, dy=Math.abs(e.touches[0].clientY-sy);
+      if(hor===null && (Math.abs(dx)>10||dy>10)) hor=Math.abs(dx)>dy;
+      if(hor && dx>0){ e.preventDefault(); row.style.transform=`translateX(${Math.min(dx,84)}px)`; row.style.transition='none'; row.style.opacity=String(Math.max(.45,1-dx/320)); }
+    },{passive:false});
+    const end=e=>{
+      if(!active) return; active=false;
+      const ex=(e.changedTouches&&e.changedTouches[0])?e.changedTouches[0].clientX:sx;
+      const dx=ex-sx;
+      row.style.transition='transform .2s,opacity .2s'; row.style.transform=''; row.style.opacity='';
+      if(hor && dx>62){ focusAddItem(row.dataset.ftype, row.dataset.id); }
+    };
+    row.addEventListener('touchend',end); row.addEventListener('touchcancel',end);
+  });
 }
 
 function dayMustDo(){
@@ -7314,7 +7458,7 @@ function buildChoresSection(){
     rows = visible.map(id=>{
       const c = S.chores.find(c=>c.id===id); if(!c) return '';
       const d = !!(S.choreLog?.[td]?.[id]);
-      return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}">
+      return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}" data-ftype="chore">
         ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;flex-shrink:0;">☰</span>`}
         <div class="chore-cbox" onclick="${locked?'':`toggleChoreDone('${id}')`}">${d?'✓':'●'}</div>
         <div class="chore-label" onclick="${locked?'':`toggleChoreDone('${id}')`}">${escHtml(c.name)}
@@ -7722,7 +7866,7 @@ function buildStudySection(){
     rows = visible.map(id=>{
       const c = S.studies.find(c=>c.id===id); if(!c) return '';
       const d = !!(S.studyLog?.[td]?.[id]);
-      return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}">
+      return `<div class="chore-row drag-item${d?' done':''}" data-id="${id}" data-ftype="study">
         ${locked?'':`<span class="drag-handle" onclick="event.stopPropagation()" style="font-size:.7rem;color:var(--tx3);padding:2px 4px 2px 0;flex-shrink:0;">☰</span>`}
         <div class="chore-cbox" onclick="${locked?'':`toggleStudyDone('${id}')`}">${d?'✓':'●'}</div>
         <div class="chore-label" onclick="${locked?'':`toggleStudyDone('${id}')`}">${escHtml(c.name)}
