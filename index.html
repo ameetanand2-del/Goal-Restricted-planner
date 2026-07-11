@@ -541,68 +541,70 @@ select.inp{appearance:none;}
   <!-- Focus queue bar (items swiped right land here) -->
   <div id="focus-bar" style="display:none;margin-bottom:9px;"></div>
 
-  <!-- Plan your day section (for non-daily habits) -->
-  <div id="plan-day-section"></div>
-
-  <!-- Weekly Goals Section -->
-  <div id="weekly-goals-section"></div>
-
-  <!-- Today's habits label -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:8px;">
-    <div class="sl" style="margin:0;">✨ Today's habits</div>
-    <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
-      <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
-    </button>
+  <!-- Habits / To-dos view toggle -->
+  <div class="tab-switch" style="margin-bottom:12px;">
+    <div class="ts-btn on" id="dv-habits" onclick="setDailyView('habits')">✨ Habits</div>
+    <div class="ts-btn" id="dv-todos" onclick="setDailyView('todos')">📋 To-dos</div>
   </div>
 
-  <!-- Habits list (grouped) -->
-  <div id="daily-habits-list"></div>
+  <!-- ░░ HABITS VIEW ░░ -->
+  <div id="daily-view-habits">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="sl" style="margin:0;">✨ Today's habits</div>
+      <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+        <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
+      </button>
+    </div>
+    <div id="daily-habits-list"></div>
+    <div id="night-routine-section"></div>
+    <div id="done-today-section"></div>
+  </div>
 
-  <!-- Today's study (recurring, max 3, optionally attached to a habit) -->
-  <div id="study-section"></div>
-
-  <!-- Today's tasks -->
-  <div id="daily-tasks-wrap" style="display:none;">
-    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:9px;">
-      <div onclick="toggleTasksPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:1rem;">📋</span>
-          <div>
-            <div style="font-size:.82rem;font-weight:700;color:var(--tx);">Today's Tasks</div>
-            <div id="daily-tasks-sub" style="font-size:.65rem;color:var(--tx3);">None yet</div>
+  <!-- ░░ TO-DOS VIEW ░░ -->
+  <div id="daily-view-todos" style="display:none;">
+    <!-- Plan your day section (for non-daily habits) -->
+    <div id="plan-day-section"></div>
+    <!-- Today's study -->
+    <div id="study-section"></div>
+    <!-- Today's tasks -->
+    <div id="daily-tasks-wrap" style="display:none;">
+      <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:9px;">
+        <div onclick="toggleTasksPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;user-select:none;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1rem;">📋</span>
+            <div>
+              <div style="font-size:.82rem;font-weight:700;color:var(--tx);">Today's Tasks</div>
+              <div id="daily-tasks-sub" style="font-size:.65rem;color:var(--tx3);">None yet</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="daily-tasks-count" style="font-size:.72rem;font-weight:700;color:var(--teal);">0/0</span>
+            <span id="tasks-chev" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;">▾</span>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span id="daily-tasks-count" style="font-size:.72rem;font-weight:700;color:var(--teal);">0/0</span>
-          <span id="tasks-chev" style="font-size:.62rem;color:var(--tx3);display:inline-block;transition:transform .2s;">▾</span>
+        <div id="tasks-body" style="display:none;padding:0 12px 12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+            <button onclick="event.stopPropagation();openTaskPicker()" style="white-space:nowrap;font-size:.65rem;color:var(--a);padding:5px 12px;border-radius:99px;background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.2);font-weight:600;">+ Add task</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button onclick="event.stopPropagation();clearTodaysTasks()" style="white-space:nowrap;font-size:.65rem;color:var(--red);padding:5px 10px;border-radius:99px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);font-weight:600;">Clear all</button>
+              <button id="daily-task-group-toggle" onclick="event.stopPropagation();toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+                <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
+              </button>
+            </div>
+          </div>
+          <div id="daily-tasks-list"></div>
         </div>
-      </div>
-      <div id="tasks-body" style="display:none;padding:0 12px 12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">
-          <button onclick="event.stopPropagation();openTaskPicker()" style="white-space:nowrap;font-size:.65rem;color:var(--a);padding:5px 12px;border-radius:99px;background:rgba(232,98,42,.08);border:1px solid rgba(232,98,42,.2);font-weight:600;">+ Add task</button>
-          <button id="daily-task-group-toggle" onclick="event.stopPropagation();toggleDailyTaskGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
-            <span id="daily-task-group-icon">▤</span> <span id="daily-task-group-label">Grouped</span>
-          </button>
-        </div>
-        <div id="daily-tasks-list"></div>
       </div>
     </div>
+    <!-- Today's chores -->
+    <div id="chores-section"></div>
   </div>
-
-  <!-- Today's chores (recurring, max 3) -->
-  <div id="chores-section"></div>
-
-  <!-- Night routine (time-of-day mode only — always rendered last) -->
-  <div id="night-routine-section"></div>
 
   <!-- Reflection questions (configured in Settings > Prefs) -->
   <div id="eod-section"></div>
 
   <button class="complete-day-btn locked" id="complete-day-btn" onclick="completeDay()">&#128274; Complete Day</button>
   <div style="font-size:.66rem;color:var(--tx3);text-align:center;margin-top:6px;" id="lock-hint">Address all habits to unlock</div>
-
-  <!-- Done today section -->
-  <div id="done-today-section"></div>
 
     </div><!-- end daily-content-locked -->
   </div><!-- end daily-locked-overlay -->
@@ -1100,6 +1102,7 @@ function buildDailyView(){
   buildFocusBar();
   renderFocusOverlay();
   wireFocusSwipe();
+  setDailyView(dailyView);
   updateCompleteDayBtn();
 }
 
@@ -2903,8 +2906,8 @@ function renderDailyTaskRow(t){
     <span class="drag-handle" style="font-size:.85rem;color:var(--tx3);padding:6px 8px 6px 2px;cursor:grab;touch-action:none;">☰</span>
     <div class="task-d-check" onclick="event.stopPropagation();toggleDailyTask('${t.id}')">${t.done?'✓':''}</div>
     <div style="flex:1;">
-      <div class="task-d-label drag-label" style="${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}</div>
-      ${sub||(overdue&&!t.done)?`<div class="task-d-sub">${overdue&&!t.done&&t.dueDate<td?'<span style="color:var(--red);">Overdue</span>':''}${sub?(overdue&&!t.done?' · ':'')+sub:''}</div>`:''}
+      <div class="task-d-label drag-label" style="${t.done?'text-decoration:line-through;color:var(--tx3);':''}">${t.name}${sub?` <span style="color:var(--tx3);font-weight:500;">(${sub})</span>`:''}</div>
+      ${overdue&&!t.done&&t.dueDate<td?`<div class="task-d-sub"><span style="color:var(--red);">Overdue</span></div>`:''}
     </div>
   </div>`;
 }
@@ -3199,6 +3202,37 @@ function wireFocusSwipe(){
     };
     row.addEventListener('touchend',end); row.addEventListener('touchcancel',end);
   });
+}
+
+let dailyView = (typeof localStorage!=='undefined' && localStorage.getItem('dailyView')) || 'habits';
+function setDailyView(v){
+  dailyView = (v==='todos') ? 'todos' : 'habits';
+  try{ localStorage.setItem('dailyView', dailyView); }catch(e){}
+  const h=document.getElementById('daily-view-habits'), t=document.getElementById('daily-view-todos');
+  if(h) h.style.display = dailyView==='habits'?'':'none';
+  if(t) t.style.display = dailyView==='todos'?'':'none';
+  const bh=document.getElementById('dv-habits'), bt=document.getElementById('dv-todos');
+  if(bh) bh.classList.toggle('on', dailyView==='habits');
+  if(bt) bt.classList.toggle('on', dailyView==='todos');
+}
+function clearTodaysTasks(){
+  const td=today();
+  const affected = S.tasks.filter(t=>!t.archived && !t.done && t.dueDate && t.dueDate<=td && !isTaskFromFutureGoal(t));
+  if(!affected.length){ toast('No tasks to clear'); return; }
+  showModal("Clear today's tasks?",
+    `<div style="font-size:.8rem;color:var(--tx2);line-height:1.5;">Remove the due date from <b>${affected.length} task${affected.length>1?'s':''}</b> in today's list? They'll move to your <b>Brain dump</b> (unscheduled) so you can reschedule them anytime. Nothing is deleted.</div>
+     <button class="btn btp bfu" style="margin-top:12px;" onclick="confirmClearTodaysTasks()">Remove due dates</button>`,
+    [{label:'Cancel', cls:'btgh'}]);
+}
+function confirmClearTodaysTasks(){
+  const td=today();
+  let n=0;
+  S.tasks.forEach(t=>{ if(!t.archived && !t.done && t.dueDate && t.dueDate<=td && !isTaskFromFutureGoal(t)){ t.dueDate=''; n++; } });
+  save();
+  closeModal('dyn-modal');
+  buildDailyTasks(); updateHeroStats();
+  if(typeof buildTasksList==='function') buildTasksList();
+  toast(`Moved ${n} to Brain dump ✓`);
 }
 
 function dayMustDo(){
