@@ -3227,7 +3227,8 @@ function wireFocusSwipe(){
       const dx=e.touches[0].clientX-sx, dy=Math.abs(e.touches[0].clientY-sy);
       if(hor===null && (Math.abs(dx)>10||dy>10)) hor=Math.abs(dx)>dy;
       const isHabit = row.dataset.ftype==='habit';
-      if(hor && (dx>0 || (dx<0 && isHabit))){ e.preventDefault(); const clamp=Math.max(-84,Math.min(84,dx)); row.style.transform=`translateX(${clamp}px)`; row.style.transition='none'; row.style.opacity=String(Math.max(.45,1-Math.abs(dx)/320)); }
+      const isTask = row.dataset.ftype==='task';
+      if(hor && (dx>0 || (dx<0 && (isHabit||isTask)))){ e.preventDefault(); const clamp=Math.max(-84,Math.min(84,dx)); row.style.transform=`translateX(${clamp}px)`; row.style.transition='none'; row.style.opacity=String(Math.max(.45,1-Math.abs(dx)/320)); }
     },{passive:false});
     const end=e=>{
       if(!active) return; active=false;
@@ -3236,6 +3237,7 @@ function wireFocusSwipe(){
       row.style.transition='transform .2s,opacity .2s'; row.style.transform=''; row.style.opacity='';
       if(hor && dx>62){ focusAddItem(row.dataset.ftype, row.dataset.id); }
       else if(hor && dx<-62 && row.dataset.ftype==='habit'){ skipHab(row.dataset.id); }
+      else if(hor && dx<-62 && row.dataset.ftype==='task'){ removeTaskFromToday(row.dataset.id); }
     };
     row.addEventListener('touchend',end); row.addEventListener('touchcancel',end);
   });
@@ -3270,6 +3272,15 @@ function confirmClearTodaysTasks(){
   buildDailyTasks(); updateHeroStats();
   if(typeof buildTasksList==='function') buildTasksList();
   toast(`Moved ${n} to Brain dump ✓`);
+}
+function removeTaskFromToday(taskId){
+  const t=S.tasks.find(x=>x.id===taskId); if(!t) return;
+  t.dueDate='';                 // unschedule → drops into Brain dump
+  save();
+  buildDailyTasks(); updateHeroStats();
+  if(typeof buildTasksList==='function') buildTasksList();
+  if(typeof renderTaskPill==='function') renderTaskPill();
+  toast('Removed from today → Brain dump');
 }
 
 function dayMustDo(){
@@ -3581,6 +3592,7 @@ function taskPriority(t){ const p=t&&t.priority; return TASK_PRI[p]?p:''; }
 const TASK_TABS = [
   {id:'scheduled', label:'Scheduled', short:'Sched', icon:'📅'},
   {id:'brain',     label:'Brain dump', short:'Brain', icon:'🧠'},
+  {id:'all',       label:'All', short:'All', icon:'📋'},
   {id:'calendar',  label:'Calendar', short:'Cal', icon:'🗓'},
   {id:'done',      label:'Done', short:'Done', icon:'✅'}
 ];
@@ -3637,12 +3649,14 @@ function buildTasksList(){
   let tasks=[], emptyMsg='';
   if(taskTab==='scheduled'){
     tasks = open.filter(t=>t.dueDate);
-    tasks.sort((a,b)=> (a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0) || (TASK_PRI[taskPriority(b)].rank - TASK_PRI[taskPriority(a)].rank));
     emptyMsg='Nothing scheduled. Add a task with a due date.';
   } else if(taskTab==='brain'){
-    tasks = open.filter(t=>!t.dueDate); // unscheduled captures
+    tasks = open.filter(t=>!t.dueDate);
     tasks.sort((a,b)=> TASK_PRI[taskPriority(b)].rank - TASK_PRI[taskPriority(a)].rank);
     emptyMsg='Brain dump is empty. Quick-capture unscheduled tasks here.';
+  } else if(taskTab==='all'){
+    tasks = open.slice();
+    emptyMsg='No open tasks yet. Tap + to add one.';
   } else { // done
     tasks = S.tasks.filter(t=>!t.archived && t.done);
     tasks.sort((a,b)=> (b.doneAt||'') < (a.doneAt||'') ? -1 : 1);
@@ -3657,12 +3671,16 @@ function buildTasksList(){
     return;
   }
 
-  if(taskTab==='scheduled'){
+  if(taskTab==='scheduled' || taskTab==='all'){
+    const dated = tasks.filter(t=>t.dueDate).sort((a,b)=> (a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0) || (TASK_PRI[taskPriority(b)].rank - TASK_PRI[taskPriority(a)].rank));
+    const undated = tasks.filter(t=>!t.dueDate).sort((a,b)=> TASK_PRI[taskPriority(b)].rank - TASK_PRI[taskPriority(a)].rank);
     const secs=[
-      {lbl:'Overdue',  col:'var(--red)',  items:tasks.filter(t=>t.dueDate<td)},
-      {lbl:'Today',    col:'var(--a2)',   items:tasks.filter(t=>t.dueDate===td)},
-      {lbl:'Upcoming', col:'var(--blue)', items:tasks.filter(t=>t.dueDate>td)}
+      {lbl:'Overdue',  col:'var(--red)',  items:dated.filter(t=>t.dueDate<td)},
+      {lbl:'Today',    col:'var(--a2)',   items:dated.filter(t=>t.dueDate===td)},
+      {lbl:'Upcoming', col:'var(--blue)', items:dated.filter(t=>t.dueDate>td)}
     ];
+    // In the All tab, unscheduled tasks (Brain dump) appear as their own section
+    if(taskTab==='all') secs.push({lbl:'🧠 Brain dump', col:'var(--tx3)', items:undated});
     let html='';
     secs.forEach(s=>{ if(!s.items.length) return;
       html+=`<div style="margin-bottom:14px;">
