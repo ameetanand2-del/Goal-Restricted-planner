@@ -3928,7 +3928,12 @@ function openNewTaskModal(prefill){
   document.getElementById('modal-title').textContent = 'New task';
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="nt-name" placeholder="What needs to be done…" value="${prefill||''}"/></div>
-    <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="nt-due"/></div>
+    <div class="igrp"><label class="ilbl">Due date (optional)</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="inp" type="date" id="nt-due" style="flex:1;"/>
+        <button type="button" onclick="document.getElementById('nt-due').value=''" style="white-space:nowrap;font-size:.66rem;color:var(--red);background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);border-radius:8px;padding:9px 11px;font-weight:600;cursor:pointer;">Remove</button>
+      </div>
+    </div>
     <div class="igrp"><label class="ilbl">Priority (optional)</label>
       <select class="inp" id="nt-pri" style="appearance:none;">
         <option value="">None</option>
@@ -4075,7 +4080,12 @@ function openTaskEdit(taskId){
   document.getElementById('modal-title').textContent = 'Edit task';
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="te-name" value="${t.name}"/></div>
-    <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="te-due" value="${t.dueDate||''}"/></div>
+    <div class="igrp"><label class="ilbl">Due date (optional)</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="inp" type="date" id="te-due" value="${t.dueDate||''}" style="flex:1;"/>
+        <button type="button" onclick="document.getElementById('te-due').value=''" style="white-space:nowrap;font-size:.66rem;color:var(--red);background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);border-radius:8px;padding:9px 11px;font-weight:600;cursor:pointer;">Remove</button>
+      </div>
+    </div>
     <div class="igrp"><label class="ilbl">Priority (optional)</label>
       <select class="inp" id="te-pri" style="appearance:none;">
         <option value="" ${taskPriority(t)===''?'selected':''}>None</option>
