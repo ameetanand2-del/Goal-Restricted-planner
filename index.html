@@ -511,7 +511,7 @@ select.inp{appearance:none;}
 
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <div class="sg5" style="flex:1;margin:0;">
-      <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Habits</div></div>
+      <div class="stile"><div class="sv" id="hhabits" style="color:var(--green)">0/0</div><div class="slb">Principles</div></div>
       <div class="stile" onclick="document.getElementById('study-section')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer;">
         <div class="sv" id="hstudy" style="color:var(--purple)">0/0</div>
         <div class="slb">Study</div>
@@ -548,14 +548,14 @@ select.inp{appearance:none;}
 
   <!-- Habits / To-dos view toggle -->
   <div class="tab-switch" style="margin-bottom:12px;">
-    <div class="ts-btn on" id="dv-habits" onclick="setDailyView('habits')">✨ Habits</div>
+    <div class="ts-btn on" id="dv-habits" onclick="setDailyView('habits')">✨ Principles</div>
     <div class="ts-btn" id="dv-todos" onclick="setDailyView('todos')">📋 To-dos</div>
   </div>
 
   <!-- ░░ HABITS VIEW ░░ -->
   <div id="daily-view-habits">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="sl" style="margin:0;">✨ Today's habits</div>
+      <div class="sl" style="margin:0;">✨ Today's principles</div>
       <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
         <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
       </button>
@@ -609,7 +609,7 @@ select.inp{appearance:none;}
   <div id="eod-section"></div>
 
   <button class="complete-day-btn locked" id="complete-day-btn" onclick="completeDay()">&#128274; Complete Day</button>
-  <div style="font-size:.66rem;color:var(--tx3);text-align:center;margin-top:6px;" id="lock-hint">Address all habits to unlock</div>
+  <div style="font-size:.66rem;color:var(--tx3);text-align:center;margin-top:6px;" id="lock-hint">Address all principles to unlock</div>
 
     </div><!-- end daily-content-locked -->
   </div><!-- end daily-locked-overlay -->
@@ -627,7 +627,7 @@ select.inp{appearance:none;}
 <div class="page" id="page-progress"><div class="pi">
 
   <div class="tab-switch">
-    <div class="ts-btn on" id="tr-habits" onclick="switchTrackerTab('habits',this)">Habits</div>
+    <div class="ts-btn on" id="tr-habits" onclick="switchTrackerTab('habits',this)">Principles</div>
     <div class="ts-btn" id="tr-commit" onclick="switchTrackerTab('commitment',this)">Commitment</div>
   </div>
 
@@ -648,8 +648,8 @@ select.inp{appearance:none;}
   <div class="goals-filter-wrap" id="goals-filter-wrap">
     <button class="gf-btn on" onclick="setGoalsFilter('all')">All</button>
     <button class="gf-btn" onclick="setGoalsFilter('goals')">Goals</button>
-    <button class="gf-btn" onclick="setGoalsFilter('projects')">Projects</button>
-    <button class="gf-btn" onclick="setGoalsFilter('habits')">Habits</button>
+    <button class="gf-btn" onclick="setGoalsFilter('projects')">Sub-goals</button>
+    <button class="gf-btn" onclick="setGoalsFilter('habits')">Principles</button>
   </div>
 
   <!-- Goals + projects list -->
@@ -698,12 +698,12 @@ select.inp{appearance:none;}
   <div class="subpage on" id="ssub-workspace">
 
     <div style="font-size:.72rem;color:var(--tx3);text-align:center;padding:4px 0 14px;line-height:1.6;">
-      Add goals, projects &amp; habits using the <strong style="color:var(--a);">+</strong> button in the <strong style="color:var(--tx2);">Goals</strong> tab.<br/>
-      Manage habits in <strong style="color:var(--tx2);">Settings → Habits</strong> below.
+      Add goals, sub-goals &amp; principles using the <strong style="color:var(--a);">+</strong> button in the <strong style="color:var(--tx2);">Goals</strong> tab.<br/>
+      Manage principles in <strong style="color:var(--tx2);">Settings → Principles</strong> below.
     </div>
 
     <!-- Free habits (no project) -->
-    <div class="sl">Habits — standalone</div>
+    <div class="sl">Principles — standalone</div>
     <div id="ws-free-habits"></div>
 
     <!-- Archive -->
@@ -711,9 +711,9 @@ select.inp{appearance:none;}
     <div id="ws-archive-body" style="display:none;">
       <div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Goals</div>
       <div id="ws-archived-goals"></div>
-      <div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px;">Habits</div>
+      <div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px;">Principles</div>
       <div id="ws-archived-habits"></div>
-      <div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px;">Projects</div>
+      <div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px;">Sub-goals</div>
       <div id="ws-archived-projects"></div>
     </div>
 
@@ -789,8 +789,8 @@ select.inp{appearance:none;}
 <!-- Floating Action Button with Menu (Goals) -->
 <div id="goals-fab-container" style="display:none;">
   <div id="goals-fab-menu" style="display:none;position:absolute;bottom:60px;right:0;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:140px;">
-    <div class="fab-item" onclick="openQuickAdd('habit');closeGoalsFabMenu()">+ Habit</div>
-    <div class="fab-item" onclick="openQuickAdd('project');closeGoalsFabMenu()">+ Project</div>
+    <div class="fab-item" onclick="openQuickAdd('habit');closeGoalsFabMenu()">+ Principle</div>
+    <div class="fab-item" onclick="openQuickAdd('project');closeGoalsFabMenu()">+ Sub-goal</div>
     <div class="fab-item fab-item-add" onclick="openQuickAdd('goal');closeGoalsFabMenu()">+ Goal</div>
   </div>
   <button class="fab" onclick="toggleGoalsFabMenu()">+</button>
@@ -879,7 +879,7 @@ def('selfNotes',[          // notes-to-self, openable from the topbar; bodies ca
 ]);
 def('scorePopupLastShown',null); // date the morning weekly-score popup was last shown
 
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 
 function save(){ localStorage.setItem('a26v38', JSON.stringify(S)); }
 function today(){
@@ -1965,7 +1965,7 @@ function openAddWeeklyGoal(cat){
       <button class="btn btp bfu" onclick="wgCreateTask()" style="margin-bottom:11px;">+ Create task &amp; add</button>
       <div style="display:flex;gap:6px;margin-bottom:6px;">
         <input id="wg-new-project" class="inp" placeholder="Or new project…" style="flex:1;font-size:.78rem;" onkeydown="if(event.key==='Enter')wgQuickCreate('project')">
-        <button class="btn btsm btgh" style="font-size:.62rem;white-space:nowrap;" onclick="wgQuickCreate('project')">+ Project</button>
+        <button class="btn btsm btgh" style="font-size:.62rem;white-space:nowrap;" onclick="wgQuickCreate('project')">+ Sub-goal</button>
       </div>
       <div style="display:flex;gap:6px;">
         <input id="wg-new-goal" class="inp" placeholder="Or new goal…" style="flex:1;font-size:.78rem;" onkeydown="if(event.key==='Enter')wgQuickCreate('goal')">
@@ -2329,7 +2329,7 @@ function buildDailyHabits(){
         <div style="font-size:1.4rem;margin-bottom:8px;">🌱</div>
         <div style="font-size:.85rem;font-weight:600;margin-bottom:5px;">No habits yet</div>
         <div style="font-size:.75rem;color:var(--tx2);margin-bottom:13px;">Add a habit in Settings to start tracking.</div>
-        <button class="btn btp" onclick="goTab('settings',document.getElementById('nb-settings'));openQuickAdd('habit')">+ Add habit</button>
+        <button class="btn btp" onclick="goTab('settings',document.getElementById('nb-settings'));openQuickAdd('habit')">+ Add principle</button>
       </div>`;
     } else {
       el.innerHTML = '';
@@ -3025,7 +3025,7 @@ function buildDoneSection(){
   el.innerHTML = `<div class="done-section">
     <div class="done-section-hdr" onclick="toggleSection('${bodyId}')">
       <span style="font-size:.85rem;">✅</span>
-      <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--green);">Habits</div>
+      <div style="flex:1;font-size:.78rem;font-weight:700;color:var(--green);">Principles</div>
       <span style="font-size:.7rem;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:99px;">${totalDone}</span>
       <span style="font-size:.62rem;color:var(--tx3);">▾</span>
     </div>
@@ -3350,7 +3350,7 @@ function updateRing(){
       if(tasksTotal) parts.push(`${tasksDone}/${tasksTotal} tasks`);
       rs.textContent = parts.join(' · ');
     } else {
-      rs.textContent = 'No habits tracked today';
+      rs.textContent = 'No principles tracked today';
     }
   }
 
@@ -3531,9 +3531,9 @@ function updateCompleteDayBtn(){
     if(ready){
       hint.textContent='Tap to lock in today';
     } else if(!habitsReady && !tasksReady){
-      hint.textContent='Address all habits and complete all tasks';
+      hint.textContent='Address all principles and complete all tasks';
     } else if(!habitsReady){
-      hint.textContent='Address all habits to unlock';
+      hint.textContent='Address all principles to unlock';
     } else {
       hint.textContent='Complete all tasks to unlock';
     }
@@ -4945,7 +4945,7 @@ function buildTrackerCycle(){
 
   el.innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:9px;">
-      <div class="stile"><div class="sv" style="color:${overallCol};font-size:1rem;">${overallPct}%</div><div class="slb">Habits</div></div>
+      <div class="stile"><div class="sv" style="color:${overallCol};font-size:1rem;">${overallPct}%</div><div class="slb">Principles</div></div>
       <div class="stile"><div class="sv" style="color:var(--blue);">${daysPast}/${totalDays}</div><div class="slb">Days</div></div>
       <div class="stile"><div class="sv" style="color:var(--teal);">${openTasks}</div><div class="slb">Open tasks</div></div>
     </div>
@@ -4964,7 +4964,7 @@ function buildTrackerCycle(){
       <div style="font-size:.72rem;font-weight:600;margin-bottom:7px;">Week by week — habit %</div>
       <div class="chart-wrap"><canvas id="c-cycle-wk"></canvas></div>
     </div>`:''}
-    <div class="sl">Habits in this cycle</div>
+    <div class="sl">Principles in this cycle</div>
     ${cycleHabits.map(h=>{
       const r=habitCompletionRate(h.id,cycleDays);
       const col=habitColor(h);
@@ -5037,7 +5037,7 @@ function buildGoalsSummary(){
   el.innerHTML=`<div class="sg4" style="margin-bottom:14px;">
     <div class="stile"><div class="sv" style="color:var(--a);">${goals.length}</div><div class="slb">Goals</div></div>
     <div class="stile"><div class="sv" style="color:var(--blue);">${projs.length}</div><div class="slb">Projects</div></div>
-    <div class="stile"><div class="sv" style="color:var(--green);">${habits.length}</div><div class="slb">Habits</div></div>
+    <div class="stile"><div class="sv" style="color:var(--green);">${habits.length}</div><div class="slb">Principles</div></div>
     <div class="stile"><div class="sv" style="color:var(--teal);">${complete}</div><div class="slb">Done</div></div>
   </div>`;
 }
@@ -5373,7 +5373,7 @@ function renderGoalCard(g){
     <div class="swipe-actions">
       <button class="btn btsm btgh" onclick="event.stopPropagation();moveGoalUp('${g.id}')" title="Move up">↑</button>
       <button class="btn btsm btgh" onclick="event.stopPropagation();moveGoalDown('${g.id}')" title="Move down">↓</button>
-      <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Project</button>
+      <button class="btn btsm btb" onclick="event.stopPropagation();openQuickAdd('project','${g.id}')">+ Sub-goal</button>
       <button class="btn btsm btgh" onclick="event.stopPropagation();openGoalEdit('${g.id}')">Edit</button>
       <button class="btn btsm btr" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
     </div>
@@ -6400,7 +6400,7 @@ function buildWsGoals(){
           <div class="entity-sub">${g.area} · ${done}/${projs.length} projects · ${pct}%</div>
         </div>
         <div style="display:flex;gap:5px;">
-          <button class="btn btsm btb" onclick="event.stopPropagation();openAddProject('${g.id}')">+ Project</button>
+          <button class="btn btsm btb" onclick="event.stopPropagation();openAddProject('${g.id}')">+ Sub-goal</button>
           <button class="btn btsm btgh" onclick="event.stopPropagation();archiveGoal('${g.id}')">Archive</button>
         </div>
       </div>
@@ -6513,7 +6513,7 @@ function openQuickAdd(type, preGoalId){
   const M={
     goal:   {title:'New goal',    body:()=>quickAddGoalBody()},
     project:{title:'New project', body:()=>quickAddProjectBody(preGoalId)},
-    habit:  {title:'New habit',   body:()=>quickAddHabitBody()},
+    habit:  {title:'New principle',   body:()=>quickAddHabitBody()},
     task:   {title:'New task',    body:()=>quickAddTaskBody()}
   };
   const m=M[type]; if(!m) return;
@@ -6777,7 +6777,7 @@ function openProjDetail(projId){
         ${goals.map(g=>`<option value="${g.id}" ${proj.goalId===g.id?'selected':''}>${g.name}</option>`).join('')}
       </select>
     </div>
-    <div style="font-size:.72rem;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;">Habits under this project</div>
+    <div style="font-size:.72rem;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;">Principles under this sub-goal</div>
     <div id="pd-habits">${habits.map(h=>renderHabitChildRow(h,'proj')).join('')}</div>
     <button class="btn btg bfu" style="margin-bottom:10px;" onclick="openAddHabitToProj('${projId}')">+ Add habit to this project</button>
     <div style="height:1px;background:var(--bdr);margin:4px 0 10px;"></div>
@@ -6879,7 +6879,7 @@ function buildCycleMgmt(){
         <div style="font-size:.82rem;font-weight:700;margin-bottom:4px;">Start a focus cycle</div>
         <div style="font-size:.72rem;color:var(--tx2);margin-bottom:13px;line-height:1.55;">A cycle locks in specific habits for a defined period. Everything else stays available — cycles just add extra focus and commitment.</div>
         <div class="igrp"><label class="ilbl">End date</label><input class="inp" type="date" id="nc-end"/></div>
-        <div style="font-size:.67rem;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Select habits to focus on</div>
+        <div style="font-size:.67rem;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Select principles to focus on</div>
         ${habits.length?habits.map(h=>{
           const col=habitColor(h);
           return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r2);margin-bottom:5px;">
@@ -6919,7 +6919,7 @@ function openEndCycle(){
   const cycleHabits=(c.habitIds||[]).map(id=>S.habits.find(h=>h.id===id)).filter(Boolean);
   body.innerHTML=`
     <div style="font-size:.75rem;color:var(--tx2);margin-bottom:12px;line-height:1.5;">Closing the cycle returns you to flexible mode. All your work and data is kept.</div>
-    ${cycleHabits.length?`<div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Habits in this cycle</div>
+    ${cycleHabits.length?`<div style="font-size:.67rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Principles in this cycle</div>
     ${cycleHabits.map(h=>`<div style="font-size:.75rem;padding:6px 10px;background:var(--sur);border-radius:var(--r2);margin-bottom:4px;">${h.name}</div>`).join('')}`:''}
     <div style="margin-top:12px;display:flex;gap:7px;">
       <button class="btn btr" style="flex:1;" onclick="finaliseCycleEnd()">Close cycle</button>
@@ -7036,6 +7036,99 @@ function migrateV37(){
     S._migrated38=true;
     save();
   }catch(e){ console.warn('Migration failed', e); }
+}
+
+// ── SEED: 2030 GOALS, SUB-GOALS & PRINCIPLES ─────────────────────────────
+function seedAmeet2030(){
+  if(S._seededAmeet2030) return;
+  try{
+    const uid = ()=> 'seed_' + Math.random().toString(36).slice(2,9);
+    const td  = today();
+
+    // ── 8 TOP-LEVEL GOALS ──────────────────────────────────────────────
+    const goalDefs = [
+      { id:'g1', name:'Get 189/190 Visa PR',                area:'Personal' },
+      { id:'g2', name:'Build a System: Principles',         area:'Personal' },
+      { id:'g3', name:'Charismatic & Hyper-focused',        area:'Personal' },
+      { id:'g4', name:'Physical & Mental Fitness',          area:'Health'   },
+      { id:'g5', name:'Investment & Family Finance',        area:'Finance'  },
+      { id:'g6', name:"Australia's Biggest Podcaster",      area:'Projects' },
+      { id:'g7', name:'Personal Health System ($100M)',     area:'Projects' },
+      { id:'g8', name:'Marriage & Family',                  area:'Personal' },
+    ];
+    goalDefs.forEach(g=>{
+      if(!S.goals.find(e=>e.id===g.id)){
+        S.goals.push({id:g.id, name:g.name, area:g.area, archived:false, createdAt:td});
+      }
+    });
+
+    // ── SUB-GOALS (stored as projects, linked to their parent goal) ────
+    const subGoalDefs = [
+      // Goal 1
+      { id:'sg1_1', name:'Visa application/grant (189/190)',          goalId:'g1' },
+      { id:'sg1_2', name:'PTE 8 Band',                                goalId:'g1' },
+      { id:'sg1_3', name:'Land $115k+ job',                           goalId:'g1' },
+      // Goal 2
+      { id:'sg2_1', name:'Build habit monitoring system',             goalId:'g2' },
+      { id:'sg2_2', name:'150-day full-adherence streak ×5 (750 days)', goalId:'g2' },
+      // Goal 3
+      { id:'sg3_1', name:'Charismatic — read & apply Charisma Myth',  goalId:'g3' },
+      { id:'sg3_2', name:'Hyper-focused — Goal Monitoring App',       goalId:'g3' },
+      { id:'sg3_3', name:'Notes/reframe system (fear, resilience)',   goalId:'g3' },
+      // Goal 4
+      { id:'sg4_1', name:'Build 3 fitness monitoring apps',           goalId:'g4' },
+      { id:'sg4_2', name:'Create consistent monitoring process',      goalId:'g4' },
+      { id:'sg4_3', name:'Reach 15% body fat (~75kg)',                goalId:'g4' },
+      { id:'sg4_4', name:'Reach biological age 28',                   goalId:'g4' },
+      // Goal 5
+      { id:'sg5_1', name:'Buy house — 1M (self) + 1M (parents)',     goalId:'g5' },
+      { id:'sg5_2', name:'Invest 500k for parents (emergency fund)',  goalId:'g5' },
+      { id:'sg5_3', name:'Earn 10k/month passive income (4% rule)',   goalId:'g5' },
+      // Goal 6
+      { id:'sg6_1', name:'Shoot 500 podcasts',                        goalId:'g6' },
+      { id:'sg6_2', name:'Produce 3,000 total shorts',                goalId:'g6' },
+      // Goal 7
+      { id:'sg7_1', name:'Launch Recomp app (public product)',        goalId:'g7' },
+      { id:'sg7_2', name:'Launch Task Manager app (public product)',  goalId:'g7' },
+      { id:'sg7_3', name:'Launch fully integrated AI health tool',    goalId:'g7' },
+      // Goal 8
+      { id:'sg8_1', name:'Weekly — events, meet people, go on dates', goalId:'g8' },
+      { id:'sg8_2', name:'Get married',                               goalId:'g8' },
+      { id:'sg8_3', name:'Complete pickup/social skills course',      goalId:'g8' },
+    ];
+    subGoalDefs.forEach(sg=>{
+      if(!S.projects.find(e=>e.id===sg.id)){
+        S.projects.push({id:sg.id, name:sg.name, goalId:sg.goalId, deadline:'', archived:false, status:'active', createdAt:td});
+      }
+    });
+
+    // ── DAILY PRINCIPLES (stored as habits, no project, linked to g2) ─
+    const primaryPrinciples = [
+      { id:'pr1', name:'No break, no matter what (real reasons only)',         hint:'Unless it is a genuine, real reason — no excuses.' },
+      { id:'pr2', name:'Remove negative & self-harming thoughts',              hint:'Full focus on self-improvement and growth only.' },
+      { id:'pr3', name:'Meditate 15 minutes',                                  hint:'Calms, centers, improves focus and time perception.' },
+      { id:'pr4', name:'Brain dump everything — plan the day in detail',       hint:'Nothing stays in your head. Vet each item: goal, importance, how to complete. No vague terms.' },
+      { id:'pr5', name:'Exercise 5–6× this week',                              hint:'Workout consistency is non-negotiable.' },
+      { id:'pr6', name:'Strict diet + supplements (omega-3, magnesium)',       hint:'Fuels energy and focus all day.' },
+    ];
+    const secondaryPrinciples = [
+      { id:'pr7', name:'No social media / media (YouTube, Netflix, Instagram, LinkedIn)', hint:'Secondary principle — avoid all media consumption.' },
+      { id:'pr8', name:'Reduce caffeine intake (target: below 50mg)',          hint:'Secondary principle — reduce steadily over time.' },
+    ];
+    [...primaryPrinciples, ...secondaryPrinciples].forEach(p=>{
+      if(!S.habits.find(e=>e.id===p.id)){
+        S.habits.push({
+          id:p.id, name:p.name, targetDays:7,
+          projId:null, goalId:'g2',
+          hint:p.hint, reasonEnabled:true,
+          archived:false, createdAt:td
+        });
+      }
+    });
+
+    S._seededAmeet2030 = true;
+    save();
+  }catch(e){ console.warn('Seed failed', e); }
 }
 
 // ── REFLECTION JOURNAL ───────────────────────────────────────────────────
@@ -8528,14 +8621,14 @@ function renderScorePanel(isMorning){
     </div>
     <div class="score-bars">
       ${scoreBar('Study', tw.dims.study,'📚')}
-      ${scoreBar('Habits', tw.dims.habits,'✨')}
+      ${scoreBar('Principles', tw.dims.habits,'✨')}
       ${scoreBar('Tasks', tw.dims.tasks,'✅')}
       ${scoreBar('Chores', tw.dims.chores,'🧹')}
       ${scoreBar('Weekly goals', tw.dims.goals,'🎯')}
     </div>
     <div class="chore-lib-sec-lbl">📈 Last 10 weeks · by category</div>
     <div style="height:190px;position:relative;"><canvas id="score-trend-canvas"></canvas></div>
-    <div style="font-size:.6rem;color:var(--tx3);margin-top:8px;text-align:center;line-height:1.5;">Weighted total: Study ×3 · Habits ×2 · Tasks/Chores/Goals ×1. Categories you didn't use are skipped, not scored 0.</div>`;
+    <div style="font-size:.6rem;color:var(--tx3);margin-top:8px;text-align:center;line-height:1.5;">Weighted total: Study ×3 · Principles ×2 · Tasks/Chores/Goals ×1. Categories you didn't use are skipped, not scored 0.</div>`;
   setTimeout(renderScoreTrend, 40);
 }
 
@@ -8558,7 +8651,7 @@ function renderScoreTrend(){
   const datasets=[
     line('Total','#a855f7',3,s=>s.overall,true),
     line('Study','#3b82f6',1.5,s=>s.dims.study.active?s.dims.study.pct:0),
-    line('Habits','#22c55e',1.5,s=>s.dims.habits.active?s.dims.habits.pct:0),
+    line('Principles','#22c55e',1.5,s=>s.dims.habits.active?s.dims.habits.pct:0),
     line('Tasks','#14b8a6',1.5,s=>s.dims.tasks.active?s.dims.tasks.pct:0),
     line('Chores','#e8622a',1.5,s=>s.dims.chores.active?s.dims.chores.pct:0),
     line('Goals','#f5a623',1.5,s=>s.dims.goals.active?s.dims.goals.pct:0)
@@ -8599,6 +8692,7 @@ function showAlert(title, msg){
 
 function init(){
   migrateV37();
+  seedAmeet2030();
   // One-time: collapse the old 3 seeded notes down to just the combined one,
   // but only remove the extras if they were never written in.
   if(!S.selfNotesMigratedV1){
