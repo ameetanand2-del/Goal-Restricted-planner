@@ -300,6 +300,10 @@ select.inp{appearance:none;}
 /* habit popup */
 #habit-popup{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);align-items:flex-end;flex-direction:column;justify-content:flex-end;}
 
+/* info button */
+.info-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(59,130,246,.12);color:var(--blue);font-size:.65rem;font-weight:700;border:1px solid rgba(59,130,246,.25);cursor:pointer;flex-shrink:0;transition:all .15s;font-style:italic;font-family:Georgia,serif;}
+.info-btn:active{background:rgba(59,130,246,.25);transform:scale(.92);}
+
 /* done today section */
 .done-section{margin-top:12px;border:1px solid rgba(34,197,94,.2);border-radius:var(--r);overflow:hidden;}
 .done-section-hdr{display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(34,197,94,.06);cursor:pointer;user-select:none;}
@@ -879,7 +883,7 @@ def('selfNotes',[          // notes-to-self, openable from the topbar; bodies ca
 ]);
 def('scorePopupLastShown',null); // date the morning weekly-score popup was last shown
 
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 
 function save(){ localStorage.setItem('a26v38', JSON.stringify(S)); }
 function today(){
@@ -5388,6 +5392,7 @@ function renderGoalCard(g){
           <div class="entity-sub" style="margin-left:24px;">${g.area} · <span style="color:${doneColor};font-weight:600;">${done}</span>/${projs.length} projects</div>
           <div class="pb" style="margin-top:5px;height:4px;margin-left:24px;"><div class="pf" style="width:${pct}%;background:${col};"></div></div>
         </div>
+        ${g.description ? `<span class="info-btn" onclick="event.stopPropagation();showGoalInfo('${g.id}')" title="View details">i</span>` : ''}
         <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
       </div>
       <div id="gp-${g.id}" style="display:none;padding:8px 0 4px;">
@@ -5474,6 +5479,7 @@ function renderGoalPageProjRow(p, groupId){
             ${habits.length?` · ${habits.length} habit${habits.length>1?'s':''}`:''}
           </div>
         </div>
+        ${p.description ? `<span class="info-btn" onclick="event.stopPropagation();showProjectInfo('${p.id}')" title="View details">i</span>` : ''}
         <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
       </div>
       ${habits.length ? `
@@ -5483,6 +5489,7 @@ function renderGoalPageProjRow(p, groupId){
           return `<div style="display:flex;align-items:center;gap:7px;padding:7px 4px;border-top:1px solid rgba(0,0,0,.05);">
             <div style="width:5px;height:5px;border-radius:50%;background:${hcol};flex-shrink:0;"></div>
             <div style="font-size:.78rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</div>
+            ${h.hint ? `<span class="info-btn" onclick="event.stopPropagation();showHabitInfo('${h.id}')" title="View details" style="width:18px;height:18px;font-size:.55rem;">i</span>` : ''}
             <div style="font-size:.6rem;color:var(--tx3);margin-right:4px;">${h.targetDays===7?'Daily':h.targetDays+'×/wk'}</div>
             <button class="btn btsm btgh" onclick="openHabitEdit('${h.id}')">Edit</button>
           </div>`;
@@ -5499,6 +5506,9 @@ function openGoalEdit(goalId){
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Goal name</label>
       <input class="inp" id="ge-name" value="${g.name}"/>
+    </div>
+    <div class="igrp"><label class="ilbl">Purpose & details</label>
+      <textarea class="inp" id="ge-desc" rows="5" style="resize:vertical;min-height:80px;line-height:1.5;" placeholder="Why this goal matters, what done looks like, what it takes…">${escHtml(g.description||'')}</textarea>
     </div>
     <div class="igrp"><label class="ilbl">Life area</label>
       <select class="inp" id="ge-area" style="appearance:none;">
@@ -5521,6 +5531,7 @@ function saveGoalEdit(goalId){
   if(!name){ toast('Enter a name'); return; }
   g.name = name;
   g.area = document.getElementById('ge-area')?.value||g.area;
+  g.description = document.getElementById('ge-desc')?.value.trim()||'';
   g.future = document.getElementById('ge-future')?.checked||false;
   save(); closeModal('modal-main'); buildGoalsPage(); toast('Goal updated ✓');
 }
@@ -5528,10 +5539,13 @@ function saveGoalEdit(goalId){
 function openProjectEdit(projId){
   const p = S.projects.find(p=>p.id===projId); if(!p) return;
   const goals = S.goals.filter(g=>!g.archived);
-  document.getElementById('modal-title').textContent = 'Edit project';
+  document.getElementById('modal-title').textContent = 'Edit sub-goal';
   document.getElementById('modal-body').innerHTML=`
-    <div class="igrp"><label class="ilbl">Project name</label>
+    <div class="igrp"><label class="ilbl">Sub-goal name</label>
       <input class="inp" id="pe-name" value="${p.name}"/>
+    </div>
+    <div class="igrp"><label class="ilbl">Purpose & details</label>
+      <textarea class="inp" id="pe-desc" rows="5" style="resize:vertical;min-height:80px;line-height:1.5;" placeholder="Why this sub-goal matters, what done looks like, how to achieve it…">${escHtml(p.description||'')}</textarea>
     </div>
     <div class="igrp"><label class="ilbl">Link to goal</label>
       <select class="inp" id="pe-goal" style="appearance:none;">
@@ -5560,6 +5574,7 @@ function saveProjectEdit(projId){
   const name = document.getElementById('pe-name')?.value.trim();
   if(!name){ toast('Enter a name'); return; }
   p.name     = name;
+  p.description = document.getElementById('pe-desc')?.value.trim()||'';
   p.goalId   = document.getElementById('pe-goal')?.value||null;
   p.deadline = document.getElementById('pe-deadline')?.value||'';
   p.status   = document.getElementById('pe-status')?.value||p.status;
@@ -6718,7 +6733,7 @@ function openHabitEdit(habId){
   
   const projs=S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
   const goals=S.goals.filter(g=>!g.archived);
-  document.getElementById('modal-title').textContent='Edit habit';
+  document.getElementById('modal-title').textContent='Edit principle';
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Name</label><input class="inp" id="eh-name" value="${h.name}"/></div>
     <div class="igrp"><label class="ilbl">Target days / week</label>
@@ -6940,10 +6955,7 @@ function finaliseCycleEnd(){
 // ── HABIT INFO POPUP ──────────────────────────────────────────────────────
 function showHabitHint(habId){
   const h=S.habits.find(h=>h.id===habId); if(!h) return;
-  document.getElementById('popup-category').textContent=groupLabel(h).toUpperCase();
-  document.getElementById('popup-title').textContent=h.name;
-  document.getElementById('popup-hint').textContent=h.hint||'No description added.';
-  document.getElementById('habit-popup').style.display='flex';
+  showInfo(h.name, h.hint);
 }
 function closeHabitPopup(){ document.getElementById('habit-popup').style.display='none'; }
 
@@ -7047,73 +7059,112 @@ function seedAmeet2030(){
 
     // ── 8 TOP-LEVEL GOALS ──────────────────────────────────────────────
     const goalDefs = [
-      { id:'g1', name:'Get 189/190 Visa PR',                area:'Personal' },
-      { id:'g2', name:'Build a System: Principles',         area:'Personal' },
-      { id:'g3', name:'Charismatic & Hyper-focused',        area:'Personal' },
-      { id:'g4', name:'Physical & Mental Fitness',          area:'Health'   },
-      { id:'g5', name:'Investment & Family Finance',        area:'Finance'  },
-      { id:'g6', name:"Australia's Biggest Podcaster",      area:'Projects' },
-      { id:'g7', name:'Personal Health System ($100M)',     area:'Projects' },
-      { id:'g8', name:'Marriage & Family',                  area:'Personal' },
+      { id:'g1', name:'Get 189/190 Visa PR', area:'Personal',
+        description:'PURPOSE: Secure permanent residency in Australia (189 or 190 stream) independently — not bounded by any company, sponsorship, or their rules and regulations. Getting PR on my own means I can start my business way sooner and faster. I am not chained by a company or sponsorship.\n\nEND STATE: PR visa granted (189 or 190).\n\nWHAT IT TAKES: Three sub-goals working together — PTE 8 band (superior English), $115k+ job, and the visa application itself. EOI already submitted. Waiting for invite.\n\nWHY IT MATTERS: Independence. Freedom to build what I want, when I want, on my own terms.' },
+      { id:'g2', name:'Build a System: Principles', area:'Personal',
+        description:'PURPOSE: Over the last 10-12 years, I\'ve understood that following these 8 principles every day gives me more time, energy, focus, and direction. By doing this and avoiding what\'s not useful, I stay in a high-energy state. My chances of accomplishing things way faster increase because I have more energy, more brainpower, more focus, and most importantly — CLARITY. I\'m not distracted by useless stuff, I\'m eating right, certain principles help me quit energy-draining habits, and certain ones increase energy/focus.\n\nOnce I learn these principles every day, achieving my goals becomes very easy and very fast. By doing 150 days continuously 5 times in 4.5 years, that solidifies it — those principles become my natural state.\n\nThese principles are an ACCELERATOR. More energy + motivation + fewer distractions + clearer direction = faster action. Could potentially hit goals in 3 years instead of 4.5.\n\nThe principles exist to SERVE the goals, not the other way around.\n\nEND STATE: All 8 principles become automatic after five 150-day streaks (750 total days). 46% of remaining runway to 2030.\n\nPrimary (in sequence): No break → Remove negative thoughts → Meditate 15 min → Brain dump & plan day → Exercise 5-6×/wk → Strict diet + supplements.\nSecondary: No social media, reduce caffeine.' },
+      { id:'g3', name:'Charismatic & Hyper-focused', area:'Personal',
+        description:'FOCUS: Charismatic + Hyper-focused only (all other traits removed).\n\nCHARISMATIC:\n- Identify biggest mental blockers affecting resilience and charisma\n- List principles from The Charisma Myth\n- Apply them in real situations until automatic\n- Dedicate 30-60 minutes daily to refactoring thought processes\n- Re-read the book to keep pulling the right information for your specific blockers\n\nHYPER-FOCUSED:\n- Having a Goal Monitoring App with all goals/sub-goals keeps you motivated\n- Knowing exactly what to achieve in 4.5 years makes achievement faster\n- In past years, goals were forgotten — this system prevents that\n- Clarity of goals + knowing exactly what to do for each = motivation, drive, and speed\n\nNOTES/REFRAME SYSTEM:\n- Identify fears/triggers blocking goals or charismatic state\n- Label them, reframe them each time they come\n- Repeat until fully resolved and never thought about again\n- Targets: fear of rejection, fear of confrontation, low mental resilience\n\nSupporting tools: vocab list + daily speaking practice.' },
+      { id:'g4', name:'Physical & Mental Fitness', area:'Health',
+        description:'PURPOSE:\n- Understand week to week if moving toward goals\n- Look physically good → supports fitness industry entry and presentability\n- Feel strong and energetic every day without a miss\n- 15% body fat directly impacts energy, hormonal health, ADHD symptoms (higher body fat + sweets = more impulsivity), grogginess. It\'s a foundational health state everything else runs better on.\n- Biological age 28 now sets the foundation for being strong and healthy at 70 — still building companies, achieving in 40 years what others try in 10.\n\nPROCESS FLOW:\n1. List the right biomarkers to test\n2. Full health checkup (blood test against those biomarkers)\n3. Find the deficiencies\n4. Improve focus, energy, strength by targeting them\n5. Systemize via Meal Planning app + Recomp app + Supplements stack\n\nEND STATE: 15% body fat, ~75kg, biological age 28, with three apps running the system.\n\nSUB-GOALS: 5 total — Meal Planning app, KPI/Recomp tracker (includes monitoring process), Strong app, 15% body fat, biological age 28.' },
+      { id:'g5', name:'Investment & Family Finance', area:'Finance',
+        description:'PURPOSE:\n- Long-term freedom from money-worry for yourself and parents\n- Parents: comfortable, happy life for the next 30-40 years. Removes your personal monetary responsibility for them as it\'s on autopilot.\n- For yourself: when you have passive income, you can focus only on work, family, and passion instead of chasing money\n- Frees focus entirely onto building products/business\n- Investment strategy makes this hands-off and consistent\n\nTHE 4% RULE:\n- Personal (high-cost country): invest $3M → $120k/yr (4%)\n- Family in India: invest $1M → $40k/yr (4%)\n- Keep rest in market for compounding + inflation\n\nWHAT IT TAKES:\n- Regular monthly investing — non-negotiable, ongoing\n- Automatic systems that invest continuously without manual effort\n- Two separate tracks: yours and your parents\'\n\nReference: Compound interest calculator – Moneysmart.gov.au' },
+      { id:'g6', name:"Australia's Biggest Podcaster", area:'Projects',
+        description:"PURPOSE:\n- More visibility — being the center of attention opens far more opportunities (10x)\n- Can open companies way faster\n- Attract and meet smart, interesting people\n- Network directly through the podcast\n- In a country where nobody knows you, this is the biggest thing you can do for visibility, hiring the smartest people, and building popularity\n- It's a format you naturally enjoy doing\n\nEND STATE: 15M followers across all social media, 10M YouTube subscribers.\n\nPHASE 1 (first 1.5 years): Instagram shorts only. 4 shorts/week. Output: ~312 shorts.\n\nPHASE 2 (remaining 3 years): Podcast + shorts. ~3.2 podcasts/week (500 total). Remaining shorts from 3k target (~17/week, cut from podcast episodes).\n\nFLAGGED GAP: At 4 shorts/week alone, full pace = ~936 shorts (under 3k target). Phase 2 podcast cutting must pick up the slack." },
+      { id:'g7', name:'Personal Health System ($100M)', area:'Projects',
+        description:'PURPOSE: Proof of achievement — something far more substantial than what you\'ve dreamed of. The $100M single-day sale validates 10 years of effort.\n\nTHE VISION: A fully personalized health system built on three pillars: sleep, food, and exercise. It automates the process, makes it easier for people to improve nutrition, focus on the right exercise, and improve sleep. 100% personalized — gets better the more you use it. Adapts to the person\'s needs, wants, and problems.\n\nBuilding it for yourself as much as for others.\n\nEND STATE: $100M in sales in a single day, by end of 2030.\n\nSTRUCTURE: Sub-goals 1 (Recomp app) and 2 (Task Manager) are stepping-stone products that eventually merge into sub-goal 3 (the fully integrated AI health tool). That\'s the one that does the $100M day.\n\nPRICING (based on 15M/10M audience):\n$500 → 200k buyers needed (1.3-2% conversion) ✓ realistic\n$1,000 → 100k buyers needed (0.67-1%) ✓ realistic\n$100 → 1M buyers needed (6.7-10%) ✗ stretch' },
+      { id:'g8', name:'Marriage & Family', area:'Personal',
+        description:'END STATE: Get married to someone you love and have a child.\n\nPURPOSE: By improving visibility through social events, meeting people and women — especially in business events and the right circles — the chances of meeting someone you like (and who likes you) increase significantly. Deliberate weekly effort rather than leaving it to chance.\n\nSUB-GOALS:\n1. Weekly social action — events, meet people, go on dates\n2. Complete pickup/social skills course — inner game work, not just outer game' },
     ];
     goalDefs.forEach(g=>{
       if(!S.goals.find(e=>e.id===g.id)){
-        S.goals.push({id:g.id, name:g.name, area:g.area, archived:false, createdAt:td});
+        S.goals.push({id:g.id, name:g.name, area:g.area, description:g.description||'', archived:false, createdAt:td});
       }
     });
 
     // ── SUB-GOALS (stored as projects, linked to their parent goal) ────
     const subGoalDefs = [
       // Goal 1
-      { id:'sg1_1', name:'Visa application/grant (189/190)',          goalId:'g1' },
-      { id:'sg1_2', name:'PTE 8 Band',                                goalId:'g1' },
-      { id:'sg1_3', name:'Land $115k+ job',                           goalId:'g1' },
+      { id:'sg1_1', name:'Visa application/grant (189/190)', goalId:'g1',
+        description:'END STATE: Visa granted (189 or 190 stream).\n\nCURRENT STATUS: EOI already submitted. Waiting for the invite. Once invite arrives → apply.\n\nThis is the final step — depends on PTE score and job salary hitting required thresholds first. The 8-band PTE score gives an extremely high chance of getting 189 or 190.' },
+      { id:'sg1_2', name:'PTE 8 Band', goalId:'g1',
+        description:'END STATE: Score 8 band across PTE (superior English).\n\nPURPOSE: Higher PTE band increases points/chances for both 189 and 190. Once you get 8 band, you have an extremely high chance of getting the visa. This is the key that unlocks the visa — it is the bottleneck.\n\nWHAT IT TAKES: Study regularly, every day, to improve overall language, writing, and speaking skills.\n\nThe only purpose of this sub-goal is to get superior English to increase PR chances.' },
+      { id:'sg1_3', name:'Land $115k+ job', goalId:'g1',
+        description:'END STATE: Land a job paying $110-115k+ or negotiate a raise at current job to that level.\n\nPURPOSE: Higher-paying job increases chances for 190 through this route. Same purpose as PTE — it\'s about points.\n\nTWO PATHS:\n1. Find and land a new job at $115k+\n2. Increase pay at current job to $115k+\n\nWHAT IT TAKES: Finalize the process/plan this month, then execute.' },
       // Goal 2
-      { id:'sg2_1', name:'Build habit monitoring system',             goalId:'g2' },
-      { id:'sg2_2', name:'150-day full-adherence streak ×5 (750 days)', goalId:'g2' },
+      { id:'sg2_1', name:'Build habit monitoring system', goalId:'g2',
+        description:'PURPOSE: Create a system to monitor all 8 principles every day.\n\nWHAT IT NEEDS:\n- A daily tracker that shows whether each principle was followed\n- A written list of WHY you are doing each principle\n- A written list of WHAT you can do to always follow through and stay consistent on each principle\n\nThis is the infrastructure — build it once, use it daily. Without this system, the principles have no accountability mechanism.' },
+      { id:'sg2_2', name:'150-day full-adherence streak ×5 (750 days)', goalId:'g2',
+        description:'TARGET: 150 consecutive days of full adherence to all 8 principles, repeated 5 times = 750 total days.\n\nEND STATE: Once achieved, all principles are considered AUTOMATIC — they are part of who you are, your natural state.\n\nWHY 150 DAYS × 5: The 150-day streaks aren\'t just about discipline — they are an ACCELERATOR. More energy + motivation + fewer distractions + clearer direction = faster action. Could potentially hit all goals in 3 years instead of 4.5. The principles exist to serve the goals.\n\nIt\'s okay to mess up once in a while (50-60% of the time between streaks). But 150 days without messing up at all — that solidifies it.\n\nMATH: 750 days ÷ 1,631 remaining ≈ 46% of runway to end of 2030.' },
       // Goal 3
-      { id:'sg3_1', name:'Charismatic — read & apply Charisma Myth',  goalId:'g3' },
-      { id:'sg3_2', name:'Hyper-focused — Goal Monitoring App',       goalId:'g3' },
-      { id:'sg3_3', name:'Notes/reframe system (fear, resilience)',   goalId:'g3' },
-      // Goal 4
-      { id:'sg4_1', name:'Build 3 fitness monitoring apps',           goalId:'g4' },
-      { id:'sg4_2', name:'Create consistent monitoring process',      goalId:'g4' },
-      { id:'sg4_3', name:'Reach 15% body fat (~75kg)',                goalId:'g4' },
-      { id:'sg4_4', name:'Reach biological age 28',                   goalId:'g4' },
+      { id:'sg3_1', name:'Charismatic — read & apply Charisma Myth', goalId:'g3',
+        description:'PURPOSE: Build charismatic energy through The Charisma Myth.\n\nPROCESS:\n1. Identify your biggest mental blockers that affect resilience or charisma level\n2. List the principles taught in the book\n3. When those situations arise in real life, apply the principles until they become automatic\n4. Dedicate 30-60 minutes EVERY DAY to refactoring and rechanging your thought process around them\n5. Re-read the book to keep pulling the right information for your specific blockers\n\nThis is NOT a one-time read — it is daily practice until the behaviors are second nature. Keep applying and give yourself the time every day to work on this.' },
+      { id:'sg3_2', name:'Hyper-focused — Goal Monitoring App', goalId:'g3',
+        description:'PURPOSE: Having a Goal Monitoring App with all goals and sub-goals keeps you motivated — because if you know EXACTLY what to achieve in 4.5 years, the likelihood of achieving it becomes far faster.\n\nTHE PROBLEM IT SOLVES: In the last few years, goals were forgotten. Not having clarity meant not knowing what to work on. This app prevents that.\n\nHOW IT WORKS: Clarity of goals + knowing exactly what to do for each one = motivation + drive + speed of achievement.\n\nThis app IS the sub-goal — building it largely completes "hyper-focused."' },
+      { id:'sg3_3', name:'Notes/reframe system (fear, resilience)', goalId:'g3',
+        description:'PURPOSE: A system to note down ALL fears and triggers that block you from achieving goals or reaching a charismatic, hyper-focused state.\n\nPROCESS:\n1. Identify the fear/trigger/problem\n2. Label it clearly\n3. Reframe it each time it comes up\n4. Repeat until it is fully resolved and you NEVER think about it again\n\nSPECIFIC TARGETS:\n1. Fear of rejection — remove it\n2. Fear of confronting people — remove it\n3. Low mental resilience — getting emotionally attached to problems too fast, which drains energy and focus. Build resilience so this stops happening.' },
+      // Goal 4 — now 5 sub-goals (Meal Planning, KPI/Recomp, Strong as separate items)
+      { id:'sg4_1', name:'Build Meal Planning app', goalId:'g4',
+        description:'PURPOSE: Saves a lot of time each week. Instead of focusing on each meal individually, plan meals for weeks ahead and not worry about food — focus on goals much faster.\n\nWHAT IT NEEDS:\n- 5-day meal plan to follow\n- Calories for each meal/day\n- Macronutrients (protein, carbs, fats) for each meal/day\n- Plans weekly meals in under 5 minutes\n- Supports/fills nutritional deficiencies found via biomarker testing\n\nThis app removes food decisions from your daily mental load.' },
+      { id:'sg4_1b', name:'Build KPI/Recomp tracker app', goalId:'g4',
+        description:'PURPOSE: Supports weight loss, fat loss, and recomp journey. Improves ability to focus on the right eating habits and supplements. Tracks whether health promises are being followed.\n\nTHE MONITORING PROCESS BUILT INTO THIS APP:\n1. Understand weak biomarkers / areas of focus\n2. Find deficiencies in nutrition\n3. Target them\n4. Customize the whole process to fix them\n\nCORE KPIs TO HIGHLIGHT:\n- Am I losing fat?\n- Am I gaining energy?\n- Am I gaining strength and focus?\n\nFEEDBACK LOOP: If KPIs aren\'t being met, update the KPIs — not just track passively.\n\nTracks weekly goals in under 5 minutes, with daily updates. Shows whether health is trending up or down.' },
+      { id:'sg4_1c', name:'Strong app (workout tracking)', goalId:'g4',
+        description:'PURPOSE: Monitors strength on a week-to-week basis. Makes it easier to see if you are being consistent on workout goals.\n\nSTATUS: Already exists — just needs to be followed consistently.\n\nTracks: whether getting stronger week over week, workout plan adherence.' },
+      { id:'sg4_3', name:'Reach 15% body fat (~75kg)', goalId:'g4',
+        description:'END STATE: 15% body fat, approximately 75kg body weight.\n\nWHY THIS MATTERS (beyond looking good):\n- Directly impacts energy levels — less grogginess, less tiredness\n- Hormonal health improves significantly\n- ADHD symptoms DECREASE — higher body fat + sweets = more impulsivity\n- Better hormones and mood\n- Increases chances of being with someone at the same level or higher\n- It\'s a foundational health state that EVERYTHING else runs better on\n\nThis has been a goal for a very long time. Achieving it is very important.\n\nDepends on sustained use of the 3 apps and the monitoring process over months.' },
+      { id:'sg4_4', name:'Reach biological age 28', goalId:'g4',
+        description:'END STATE: Biological age of 28 years.\n\nWHY: Reaching biological age 28 NOW — by testing through biomarkers and following a really good regime — supports the long-term goal of having a very healthy, strong life at the age of 70. There\'s a high possibility of feeling better at 70 by following and getting better now.\n\nHOW: Baseline biomarker test now, retest every 6-12 months. Driven by the same system: diet, supplements, exercise, sleep, stress management.\n\nThe ultimate goal: be very physically fit and strong at 70 — still building companies, running companies, achieving bigger outcomes. What someone achieves in 10 years, you can achieve in 40 years, even bigger.' },
       // Goal 5
-      { id:'sg5_1', name:'Buy house — 1M (self) + 1M (parents)',     goalId:'g5' },
-      { id:'sg5_2', name:'Invest 500k for parents (emergency fund)',  goalId:'g5' },
-      { id:'sg5_3', name:'Earn 10k/month passive income (4% rule)',   goalId:'g5' },
+      { id:'sg5_1', name:'Buy house — 1M (self) + 1M (parents)', goalId:'g5',
+        description:'END STATE: Own a house for yourself ($1M) and one for your parents ($1M) = $2M total.\n\nWHY (for yourself): A consistent place to be at. A place where you don\'t have to worry about anything and can focus only on work.\n\nWHY (for parents): They want a house. You want to give them something that will make them happy for the rest of their life.\n\nWHAT IT TAKES: Regular monthly saving/investing toward deposits. Automatic systems.' },
+      { id:'sg5_2', name:'Invest 500k for parents (emergency fund)', goalId:'g5',
+        description:'END STATE: $500k invested as a growing corpus for parents.\n\nPURPOSE: Help parents on a month-to-month basis. This money is invested so the corpus grows over 10-15 years through compounding. If something goes wrong in India, the money is ALREADY THERE — no scrambling to send it from Australia.\n\nWHAT IT TAKES: Monthly investing, automatic systems, year over year.' },
+      { id:'sg5_3', name:'Earn 10k/month passive income (4% rule)', goalId:'g5',
+        description:'END STATE: $10k/month passive income.\n\nPURPOSE: Passive income is critical because:\n- For family: comfortable, happy life for the next 30-40 years\n- Removes personal monetary responsibility — it runs on autopilot\n- For yourself: focus only on work, family, and passion instead of chasing money\n- Focus on what drives you more\n\nTHE 4% RULE MATH:\n- Personal (high-cost country): invest $3M → $120k/yr\n- Family in India: invest $1M → $40k/yr\n- Keep remainder in market for compounding + inflation\n\nReference: Compound interest calculator – Moneysmart.gov.au' },
       // Goal 6
-      { id:'sg6_1', name:'Shoot 500 podcasts',                        goalId:'g6' },
-      { id:'sg6_2', name:'Produce 3,000 total shorts',                goalId:'g6' },
+      { id:'sg6_1', name:'Shoot 500 podcasts', goalId:'g6',
+        description:'TARGET: 500 total podcast episodes over ~3 years (Phase 2).\n\nWHY 500: Based on statistics — most podcasters quit after 50 episodes. The highest, most successful podcasters have done 400-500+. Whoever has reached the top has put in that volume. 500 is the competitive edge — outlast everyone else.\n\nPACE: ~3.2 podcasts/week (156 weeks in Phase 2).\nPhase 2 starts after the first 1.5 years of Instagram-only shorts.' },
+      { id:'sg6_2', name:'Produce 3,000 total shorts', goalId:'g6',
+        description:'TARGET: 3,000 total shorts across both phases.\n\nPURPOSE: Shorts are the DISTRIBUTION/VISIBILITY ENGINE that amplifies each podcast. The podcast creates the content, the shorts spread it. This increases visibility exceptionally well.\n\nPHASE 1 (1.5 years): Instagram shorts only, 4/week = ~312 shorts.\nPHASE 2 (3 years): Remaining ~2,688 shorts, largely cut from podcast episodes (~17/week).\n\nFLAGGED GAP: 4/week alone only gets ~936. Podcast-to-shorts cutting in Phase 2 must close the gap.' },
       // Goal 7
-      { id:'sg7_1', name:'Launch Recomp app (public product)',        goalId:'g7' },
-      { id:'sg7_2', name:'Launch Task Manager app (public product)',  goalId:'g7' },
-      { id:'sg7_3', name:'Launch fully integrated AI health tool',    goalId:'g7' },
-      // Goal 8
-      { id:'sg8_1', name:'Weekly — events, meet people, go on dates', goalId:'g8' },
-      { id:'sg8_2', name:'Get married',                               goalId:'g8' },
-      { id:'sg8_3', name:'Complete pickup/social skills course',      goalId:'g8' },
+      { id:'sg7_1', name:'Launch Recomp app (public product)', goalId:'g7',
+        description:'PURPOSE: The first step forward to building a fully centralized, personalized health system that adapts to each person\'s needs and wants.\n\nWHAT IT IS: Public-facing version of your personal Recomp/KPI tracker from Goal 4. Helps people on their own body recomposition journey.\n\nTHE BIGGER PICTURE: One of the biggest personal issues has always been poor health. Health is a personal journey where three things matter most: sleep, food, and exercise. If you can automate this process, make it easier for people to improve nutrition, exercise, and sleep — that\'s a fully personalized health system that keeps getting better the more you use it.\n\nBuilding it for yourself as much as for others. This is a stepping-stone product toward the main AI health tool.' },
+      { id:'sg7_2', name:'Launch Task Manager app (public product)', goalId:'g7',
+        description:'PURPOSE: Building it for yourself anyway — might as well launch it and make money on the side.\n\nWHAT IT IS: Public-facing version of the Goal Monitoring app from Goal 3. Helps people segregate goals, sub-goals, tasks, and habits with visual progress tracking.\n\nStepping-stone product toward the main AI health tool. Practical side income while building toward the bigger vision.' },
+      { id:'sg7_3', name:'Launch fully integrated AI health tool', goalId:'g7',
+        description:'THE ULTIMATE PRODUCT: A fully integrated AI tool that solves and supports people with various health problems, adapting to each individual person. Personalized across sleep, food, and exercise. Gets better the more you use it.\n\nThis is NOT a separate app from 7.1 and 7.2 — it IS the final, fully integrated version that combines everything into one complete product. The Recomp app and Task Manager are stepping stones that eventually merge into this.\n\nTHIS is what generates the $100M single-day sale.\n\nDepends heavily on the audience built in Goal 6 (15M/10M followers).\n\nPRICING:\n$500 → 200k buyers (1.3-2% conversion) ✓ realistic\n$1,000 → 100k buyers (0.67-1%) ✓ realistic' },
+      // Goal 8 — "get married" is the end state of the goal, not a sub-goal
+      { id:'sg8_1', name:'Weekly — events, meet people, go on dates', goalId:'g8',
+        description:'PURPOSE: Improving visibility by going to social events, meeting people, meeting women — especially in business events and the right circles — gives a much higher chance of meeting someone you like and who likes you.\n\nThese social events and dates improve the chances of getting married to someone you prefer. Deliberate weekly effort in the right circles rather than leaving it to chance.\n\nNon-negotiable weekly action — same discipline as every other goal.' },
+      { id:'sg8_3', name:'Complete pickup/social skills course', goalId:'g8',
+        description:'PURPOSE: The number one biggest fear is rejection, especially with women. This course is not just about improving the ability to meet new people — it fundamentally improves social and charisma skills.\n\nWHY: The toughest thing you can learn is to go and talk to people you have never met in your life, especially women. Mastering this improves the INNER GAME — not just outer game.\n\nWHAT IT UNLOCKS:\n- Removes fear of rejection\n- Removes approach anxiety\n- Builds confidence\n- Improves social skills across all contexts\n- Supports the weekly dating action sub-goal\n- Directly feeds into Goal 3 (Charismatic) as well' },
     ];
     subGoalDefs.forEach(sg=>{
       if(!S.projects.find(e=>e.id===sg.id)){
-        S.projects.push({id:sg.id, name:sg.name, goalId:sg.goalId, deadline:'', archived:false, status:'active', createdAt:td});
+        S.projects.push({id:sg.id, name:sg.name, goalId:sg.goalId, description:sg.description||'', deadline:'', archived:false, status:'active', createdAt:td});
       }
     });
 
     // ── DAILY PRINCIPLES (stored as habits, no project, linked to g2) ─
     const primaryPrinciples = [
-      { id:'pr1', name:'No break, no matter what (real reasons only)',         hint:'Unless it is a genuine, real reason — no excuses.' },
-      { id:'pr2', name:'Remove negative & self-harming thoughts',              hint:'Full focus on self-improvement and growth only.' },
-      { id:'pr3', name:'Meditate 15 minutes',                                  hint:'Calms, centers, improves focus and time perception.' },
-      { id:'pr4', name:'Brain dump everything — plan the day in detail',       hint:'Nothing stays in your head. Vet each item: goal, importance, how to complete. No vague terms.' },
-      { id:'pr5', name:'Exercise 5–6× this week',                              hint:'Workout consistency is non-negotiable.' },
-      { id:'pr6', name:'Strict diet + supplements (omega-3, magnesium)',       hint:'Fuels energy and focus all day.' },
+      { id:'pr1', name:'No break, no matter what (real reasons only)',
+        hint:'PRIMARY PRINCIPLE #1 (in sequence)\n\nWHAT "BREAK" MEANS: This takes away a lot of energy, focus, and motivation. It has impacted the last 12-15 years. Removing this — or only doing it for real reasons — will make energy and focus exceptionally high. Whatever you want to achieve in 4.5 years, the speed increases exponentially.\n\nWHY IT MATTERS: Doing tough things instead of easy things solidifies discipline. Changing your psychology and reasoning around it is the key — if you can change your perspective, the chance of removing it permanently is much higher.\n\nTHE TWO-MONTH RULE: If you repeat this for at least 2 full months — not half, FULL — with conscious effort every day, the likelihood of following it for the rest of your life increases massively.\n\nHOW TO VERIFY: Did I follow through on every commitment today without giving myself an out? Was any reason I gave genuinely real, or was it an excuse?' },
+      { id:'pr2', name:'Remove negative & self-harming thoughts',
+        hint:'PRIMARY PRINCIPLE #2\n\nWHAT IT IS: Zero negative thoughts about yourself. Zero negative thoughts about others. All mental energy goes toward self-improvement and growth.\n\nWHY: Negative/self-limiting thoughts drain energy and motivation. They slow you down on your goals. They usually come when you can\'t handle criticism, opinions, or ideologies that aren\'t yours — which is a sign of low resilience.\n\nTHE FIX:\n1. First identify the main issues you have, one by one\n2. Create systems, processes, and natural abilities to resolve them\n3. Break self-limiting thoughts slowly so that in 4.5 years, your achievement possibilities depend only on how you think about problems\n\nSelf-limiting thoughts WILL stop you from working harder for what you want. Removing them removes the ceiling.\n\nHOW TO VERIFY: Did I catch every negative thought today and actively reframe it? Log instances in the Notes/Reframe system.' },
+      { id:'pr3', name:'Meditate 15 minutes',
+        hint:'PRIMARY PRINCIPLE #3\n\n15 MINUTES MINIMUM. Not 10. Not "a few deep breaths." Sit down, meditate for 15 full minutes. Timer-verified.\n\nWHAT IT DOES:\n- Centers your thoughts\n- Makes you much calmer for the day\n- Reduces stress\n- Improves ability to prioritize work\n- Helps perceive time better\n- Makes it easier to focus longer in short bursts\n\nHOW TO VERIFY: Did I sit and meditate for 15 uninterrupted minutes today?' },
+      { id:'pr4', name:'Brain dump everything — plan the day in detail',
+        hint:'PRIMARY PRINCIPLE #4\n\nTHE PROBLEM: 2-3 things swirling in your head can FEEL like 20 and overwhelm you. In your head, tasks overwhelm you. On paper, they don\'t.\n\nTHE RULE: Nothing stays in your head. Brain dump EVERYTHING into the system. If no system exists, create one.\n\nEACH ITEM MUST BE VETTED:\n1. What is the goal?\n2. How important is it?\n3. How do I complete it?\n\nNo vague terms. Everything written IN DETAIL — what the end state looks like. Thought through BEFORE starting. All items completed by end of day.\n\nWHY DETAIL MATTERS: A detailed task with a clear end state increases your chances of finishing sooner, your ability to START, and your ability to restart from wherever you left off if you had to pause.\n\nBRAIN DUMPING:\n- Decreases overwhelm to zero\n- Makes prioritizing much easier\n- Saves time by WORKING on tasks instead of WORRYING about them\n- You focus on doing, not thinking about doing\n\nHOW TO VERIFY: Is my head empty? Is everything written down? Did I complete everything I wrote down today?' },
+      { id:'pr5', name:'Exercise 5–6× this week',
+        hint:'PRIMARY PRINCIPLE #5\n\nRULE: Workout 5-6 times this week. Follow the plan in the Strong app. Non-negotiable.\n\nWHY (SHORT-TERM): Get to 15% body fat this year. Increase muscle and strength.\n\nWHY (LONG-TERM — the real reason): Be very physically fit and strong even at the age of 70. Still building companies, running companies, achieving bigger outcomes. What someone achieves in 10 years, you can achieve in 40 years — even bigger. The ultimate goal is physical longevity for sustained high performance.\n\nHOW TO VERIFY: Did I complete today\'s scheduled workout as planned? Check Strong app. Rest days (1-2/week max) are part of the plan — principle is still "done" on scheduled rest days.' },
+      { id:'pr6', name:'Strict diet + supplements (omega-3, magnesium)',
+        hint:'PRIMARY PRINCIPLE #6\n\nSTRICT DIET = WHOLE FOOD DIET:\n- Anything NOT processed\n- No chemicals, no preservatives\n- Simple, cheap, healthy, and effective\n- Follow the meal plan 100% — no deviations\n\nWHAT DIET + SUPPLEMENTS DO:\n- Improve recovery\n- Improve strength\n- Improve energy levels\n- Improve mood\n\nDAILY SUPPLEMENTS (non-negotiable):\n- Omega-3 (2-3g/day) → supports ADHD\n- Magnesium → sleep + workout recovery\n- Creatine → brain function under stress + energy throughout the day\n- Vitamin D → cognitive focus + hormones + mood (you are deficient)\n- Vitamin B12 → cognitive ability (you are deficient)\n\nSupplements fill gaps that diet alone can NEVER fill.\n\nHOW TO VERIFY:\n- Did I eat exactly what was planned? (Check Meal Planning app)\n- Did I take ALL 5 supplements today?\nAll must be yes.' },
     ];
     const secondaryPrinciples = [
-      { id:'pr7', name:'No social media / media (YouTube, Netflix, Instagram, LinkedIn)', hint:'Secondary principle — avoid all media consumption.' },
-      { id:'pr8', name:'Reduce caffeine intake (target: below 50mg)',          hint:'Secondary principle — reduce steadily over time.' },
+      { id:'pr7', name:'No social media / media (YouTube, Netflix, Instagram, LinkedIn)',
+        hint:'SECONDARY PRINCIPLE #7\n\nRULE: YouTube, Netflix, Facebook, Instagram, LinkedIn — ALL off-limits. No scrolling. No "just one video." No exceptions. (Hinge is excluded — that stays.)\n\nWHY: You have an impulsive personality. When you get stuck on something — good or bad — it\'s very hard to remove yourself. So it\'s better to remove these entirely.\n\nTHE FIX (3 layers):\n1. Remove the apps from your phone\n2. Use APP BLOCKERS as external support to limit/block usage\n3. Change the reasoning/psychology behind why you even use them\n\nEvery minute saved gets redirected to goal work. Extra time saved = goals achieved faster in 4.5 years.\n\nONLY EXCEPTION: Using a platform that has a clear purpose tied to your goals.\n\nHOW TO VERIFY: Did I open or use any of these platforms today? If yes, even once → not done.' },
+      { id:'pr8', name:'Reduce caffeine intake (target: below 50mg)',
+        hint:'SECONDARY PRINCIPLE #8 — THE DOMINO PRINCIPLE\n\nTHIS IS THE MOST IMPORTANT SECONDARY PRINCIPLE.\n\nWHY: This is the one thing that can take down the ENTIRE system. The cascade:\n1. Too much coffee → anxiety increases\n2. Anxiety → stress amplified 5x on any problem\n3. Stress → can\'t focus on anything else\n4. Sleep gets affected\n5. Poor sleep → more likely to BREAK (Principle 1)\n6. Break + no sleep + high stress → screw up on ALL other principles very fast\n7. Snowball effect takes down everything\n\nPLUS: With high caffeine, negative thoughts increase — genuinely uncontrollable — which affects days and weeks going forward.\n\nTHE FIX: Slowly and steadily, week by week, reduce usage. Find alternatives that increase energy and focus without the crash/anxiety cycle.\n\nRemoving/reducing caffeine is a very important and CAUTIOUS decision. Do it gradually.\n\nHOW TO VERIFY: How many mg of caffeine did I consume today? Is it at or below my current weekly target?' },
     ];
     [...primaryPrinciples, ...secondaryPrinciples].forEach(p=>{
       if(!S.habits.find(e=>e.id===p.id)){
@@ -7129,6 +7180,74 @@ function seedAmeet2030(){
     S._seededAmeet2030 = true;
     save();
   }catch(e){ console.warn('Seed failed', e); }
+}
+
+// Backfill descriptions into already-seeded goals/sub-goals/principles
+function backfillDescriptions(){
+  if(S._backfilledDescsV3) return;
+  try{
+    // Re-run seed to pick up any new sub-goals or restructuring
+    // Then overwrite all descriptions from seed definitions
+    // This ensures existing data gets the latest detailed descriptions
+    const seedGoals = [
+      {id:'g1', desc:'PURPOSE: Secure permanent residency in Australia (189 or 190 stream) independently — not bounded by any company, sponsorship, or their rules and regulations. Getting PR on my own means I can start my business way sooner and faster. I am not chained by a company or sponsorship.\n\nEND STATE: PR visa granted (189 or 190).\n\nWHAT IT TAKES: Three sub-goals working together — PTE 8 band (superior English), $115k+ job, and the visa application itself. EOI already submitted. Waiting for invite.\n\nWHY IT MATTERS: Independence. Freedom to build what I want, when I want, on my own terms.'},
+      {id:'g2', desc:'PURPOSE: Over the last 10-12 years, I\'ve understood that following these 8 principles every day gives me more time, energy, focus, and direction. By doing this and avoiding what\'s not useful, I stay in a high-energy state. My chances of accomplishing things way faster increase because I have more energy, more brainpower, more focus, and most importantly — CLARITY. I\'m not distracted by useless stuff, I\'m eating right, certain principles help me quit energy-draining habits, and certain ones increase energy/focus.\n\nOnce I learn these principles every day, achieving my goals becomes very easy and very fast. By doing 150 days continuously 5 times in 4.5 years, that solidifies it — those principles become my natural state.\n\nThese principles are an ACCELERATOR. More energy + motivation + fewer distractions + clearer direction = faster action. Could potentially hit goals in 3 years instead of 4.5.\n\nThe principles exist to SERVE the goals, not the other way around.\n\nEND STATE: All 8 principles become automatic after five 150-day streaks (750 total days). 46% of remaining runway to 2030.'},
+      {id:'g3', desc:'FOCUS: Charismatic + Hyper-focused only (all other traits removed).\n\nCHARISMATIC:\n- Identify biggest mental blockers affecting resilience and charisma\n- List principles from The Charisma Myth\n- Apply them in real situations until automatic\n- Dedicate 30-60 minutes daily to refactoring thought processes\n- Re-read the book to keep pulling the right information for your specific blockers\n\nHYPER-FOCUSED:\n- Having a Goal Monitoring App with all goals/sub-goals keeps you motivated\n- Knowing exactly what to achieve in 4.5 years makes achievement faster\n- In past years, goals were forgotten — this system prevents that\n- Clarity of goals + knowing exactly what to do for each = motivation, drive, and speed\n\nNOTES/REFRAME SYSTEM:\n- Identify fears/triggers blocking goals or charismatic state\n- Label them, reframe them each time they come\n- Repeat until fully resolved and never thought about again\n- Targets: fear of rejection, fear of confrontation, low mental resilience'},
+      {id:'g4', desc:'PURPOSE:\n- Understand week to week if moving toward goals\n- Look physically good → supports fitness industry entry and presentability\n- Feel strong and energetic every day without a miss\n- 15% body fat directly impacts energy, hormonal health, ADHD symptoms (higher body fat + sweets = more impulsivity), grogginess. It\'s a foundational health state everything else runs better on.\n- Biological age 28 now sets the foundation for being strong and healthy at 70 — still building companies, achieving in 40 years what others try in 10.\n\nPROCESS FLOW:\n1. List the right biomarkers to test\n2. Full health checkup (blood test against those biomarkers)\n3. Find the deficiencies\n4. Improve focus, energy, strength by targeting them\n5. Systemize via Meal Planning app + Recomp app + Supplements stack\n\nEND STATE: 15% body fat, ~75kg, biological age 28, with three apps running the system.'},
+      {id:'g5', desc:'PURPOSE:\n- Long-term freedom from money-worry for yourself and parents\n- Parents: comfortable, happy life for the next 30-40 years. Removes your personal monetary responsibility for them as it\'s on autopilot.\n- For yourself: when you have passive income, you can focus only on work, family, and passion instead of chasing money\n\nTHE 4% RULE:\n- Personal (high-cost country): invest $3M → $120k/yr (4%)\n- Family in India: invest $1M → $40k/yr (4%)\n- Keep rest in market for compounding + inflation\n\nWHAT IT TAKES:\n- Regular monthly investing — non-negotiable, ongoing\n- Automatic systems that invest continuously without manual effort\n- Two separate tracks: yours and your parents\''},
+      {id:'g6', desc:'PURPOSE:\n- More visibility — being the center of attention opens far more opportunities (10x)\n- Can open companies way faster\n- Attract and meet smart, interesting people\n- Network directly through the podcast\n- In a country where nobody knows you, this is the biggest thing you can do for visibility, hiring the smartest people, and building popularity\n- It\'s a format you naturally enjoy doing\n\nEND STATE: 15M followers across all social media, 10M YouTube subscribers.\n\nPHASE 1 (first 1.5 years): Instagram shorts only. 4 shorts/week.\nPHASE 2 (remaining 3 years): Podcast + shorts. ~3.2 podcasts/week (500 total).'},
+      {id:'g7', desc:'PURPOSE: Proof of achievement — something far more substantial than what you\'ve dreamed of. The $100M single-day sale validates 10 years of effort.\n\nTHE VISION: A fully personalized health system built on three pillars: sleep, food, and exercise. Automates the process, adapts to each person. Gets better the more you use it.\n\nBuilding it for yourself as much as for others.\n\nEND STATE: $100M in sales in a single day, by end of 2030.\n\nPRICING:\n$500 → 200k buyers (1.3-2% conversion) ✓ realistic\n$1,000 → 100k buyers (0.67-1%) ✓ realistic'},
+      {id:'g8', desc:'END STATE: Get married to someone you love and have a child.\n\nPURPOSE: By improving visibility through social events, meeting people and women — especially in business events and the right circles — the chances of meeting someone you like increase significantly. Deliberate weekly effort rather than leaving it to chance.'},
+    ];
+    seedGoals.forEach(sg=>{ const g=S.goals.find(x=>x.id===sg.id); if(g) g.description=sg.desc; });
+
+    // Also ensure new sub-goals exist (Goal 4 restructured)
+    const td=today();
+    const newSubs=[
+      {id:'sg4_1b',name:'Build KPI/Recomp tracker app',goalId:'g4'},
+      {id:'sg4_1c',name:'Strong app (workout tracking)',goalId:'g4'},
+    ];
+    newSubs.forEach(ns=>{
+      if(!S.projects.find(p=>p.id===ns.id)){
+        S.projects.push({id:ns.id,name:ns.name,goalId:ns.goalId,description:'',deadline:'',archived:false,status:'active',createdAt:td});
+      }
+    });
+    // Remove old merged sub-goals if they exist
+    S.projects = S.projects.filter(p=>p.id!=='sg4_2');
+    // Remove sg8_2 (get married is end state, not sub-goal)
+    S.projects = S.projects.filter(p=>p.id!=='sg8_2');
+
+    // Update all sub-goal descriptions
+    const allSgDescs={
+      'sg1_1':'END STATE: Visa granted (189 or 190 stream).\n\nCURRENT STATUS: EOI already submitted. Waiting for the invite. Once invite arrives → apply.\n\nThis is the final step — depends on PTE score and job salary hitting required thresholds first. The 8-band PTE score gives an extremely high chance of getting 189 or 190.',
+      'sg1_2':'END STATE: Score 8 band across PTE (superior English).\n\nPURPOSE: Higher PTE band increases points/chances for both 189 and 190. Once you get 8 band, you have an extremely high chance of getting the visa. This is the key that unlocks the visa — it is the bottleneck.\n\nWHAT IT TAKES: Study regularly, every day, to improve overall language, writing, and speaking skills.',
+      'sg1_3':'END STATE: Land a job paying $110-115k+ or negotiate a raise at current job to that level.\n\nPURPOSE: Higher-paying job increases chances for 190. Same purpose as PTE — it\'s about points.\n\nTWO PATHS:\n1. Find and land a new job at $115k+\n2. Increase pay at current job to $115k+',
+      'sg2_1':'PURPOSE: Create a system to monitor all 8 principles every day.\n\nWHAT IT NEEDS:\n- A daily tracker that shows whether each principle was followed\n- A written list of WHY you are doing each principle\n- A written list of WHAT you can do to always follow through and stay consistent\n\nThis is the infrastructure — build it once, use it daily.',
+      'sg2_2':'TARGET: 150 consecutive days × 5 = 750 total days.\n\nEND STATE: All principles become AUTOMATIC — your natural state.\n\nWHY: The 150-day streaks are an ACCELERATOR. More energy + motivation + fewer distractions + clearer direction = faster action. Could hit goals in 3 years instead of 4.5.\n\nIt\'s okay to mess up between streaks. But 150 days without messing up solidifies it.\n\n750 days ÷ 1,631 remaining ≈ 46% of runway.',
+      'sg3_1':'PURPOSE: Build charismatic energy through The Charisma Myth.\n\nPROCESS:\n1. Identify biggest mental blockers affecting resilience/charisma\n2. List the principles from the book\n3. Apply them in real situations until automatic\n4. Dedicate 30-60 min EVERY DAY to refactoring thought processes\n5. Re-read the book for the right information for your specific blockers\n\nNot a one-time read — daily practice until second nature.',
+      'sg3_2':'PURPOSE: Knowing EXACTLY what to achieve in 4.5 years makes achievement faster.\n\nTHE PROBLEM: In past years, goals were forgotten. No clarity on what to work on.\n\nSOLUTION: Goal Monitoring App with all goals + sub-goals.\n\nClarity + knowing what to do = motivation + drive + speed.\n\nThis app IS the sub-goal — building it largely completes "hyper-focused."',
+      'sg3_3':'PURPOSE: Note down ALL fears and triggers blocking goals or charismatic state.\n\nPROCESS:\n1. Identify the fear/trigger/problem\n2. Label it clearly\n3. Reframe it each time it comes up\n4. Repeat until fully resolved — never thought about again\n\nTARGETS:\n1. Fear of rejection — remove it\n2. Fear of confronting people — remove it\n3. Low mental resilience — emotionally attaching to problems too fast, draining energy/focus',
+      'sg4_1':'PURPOSE: Saves time each week. Plan meals weeks ahead, don\'t worry about food, focus on goals faster.\n\nWHAT IT NEEDS:\n- 5-day meal plan\n- Calories per meal/day\n- Macronutrients (protein, carbs, fats)\n- Plans weekly meals in under 5 minutes\n- Fills nutritional deficiencies from biomarker testing\n\nRemoves food decisions from daily mental load.',
+      'sg4_1b':'PURPOSE: Supports fat loss, recomp journey, eating habits and supplements tracking.\n\nMONITORING PROCESS BUILT IN:\n1. Understand weak biomarkers / areas of focus\n2. Find nutritional deficiencies\n3. Target them\n4. Customize the process to fix them\n\nCORE KPIs:\n- Am I losing fat?\n- Am I gaining energy?\n- Am I gaining strength and focus?\n\nFEEDBACK LOOP: If KPIs not met → update KPIs.\n\nTracks weekly goals in under 5 min, daily updates.',
+      'sg4_1c':'PURPOSE: Monitors strength week to week. Shows if you are consistent on workout goals.\n\nSTATUS: Already exists — just follow consistently.\n\nTracks: strength progress + workout plan adherence.',
+      'sg4_3':'END STATE: 15% body fat, ~75kg.\n\nWHY (beyond looking good):\n- Directly impacts energy — less grogginess, tiredness\n- Hormonal health improves significantly\n- ADHD symptoms DECREASE (higher body fat + sweets = more impulsivity)\n- Better hormones and mood\n- Increases chances of being with someone at same level or higher\n- Foundational health state everything runs better on\n\nThis has been a goal for a very long time.',
+      'sg4_4':'END STATE: Biological age of 28.\n\nWHY: Getting to bio age 28 NOW sets the foundation for a healthy, strong life at 70. High possibility of feeling better at 70 by starting now.\n\nHOW: Baseline biomarker test, retest every 6-12 months. Diet + supplements + exercise + sleep + stress management.\n\nULTIMATE GOAL: Physically fit and strong at 70. Still building companies. What others achieve in 10 years, achieve in 40 — even bigger.',
+      'sg5_1':'END STATE: House for yourself ($1M) + parents ($1M) = $2M.\n\nWHY (yourself): Consistent place to be. No worries. Focus only on work.\nWHY (parents): They want a house. Give them something that makes them happy for the rest of their life.\n\nWHAT IT TAKES: Regular monthly saving/investing. Automatic systems.',
+      'sg5_2':'END STATE: $500k invested as growing corpus.\n\nPURPOSE: Help parents month to month. Corpus grows over 10-15 years through compounding. If something goes wrong in India, money is ALREADY THERE — no scrambling to send from Australia.\n\nWHAT IT TAKES: Monthly investing, automatic systems, year over year.',
+      'sg5_3':'END STATE: $10k/month passive income.\n\nPURPOSE:\n- Family: comfortable, happy life for 30-40 years\n- Removes monetary responsibility — runs on autopilot\n- Focus only on work, family, passion instead of chasing money\n\nTHE 4% RULE:\n- Personal: invest $3M → $120k/yr\n- Family in India: invest $1M → $40k/yr\n- Keep rest for compounding + inflation',
+      'sg6_1':'TARGET: 500 podcasts over ~3 years (Phase 2).\n\nWHY 500: Most podcasters quit after 50. The biggest have done 400-500+. 500 is the competitive edge — outlast everyone.\n\nPACE: ~3.2 podcasts/week (156 weeks).\nStarts after 1.5 years of Instagram-only shorts.',
+      'sg6_2':'TARGET: 3,000 total shorts.\n\nPURPOSE: Shorts are the DISTRIBUTION/VISIBILITY ENGINE. Podcast creates content, shorts spread it. Increases visibility exceptionally.\n\nPHASE 1: Instagram only, 4/week = ~312.\nPHASE 2: ~2,688 remaining, cut from podcast episodes (~17/week).\n\nGAP: 4/week alone = ~936. Podcast cutting must close the gap.',
+      'sg7_1':'PURPOSE: First step toward a fully personalized health system.\n\nWHAT: Public-facing Recomp app. Health is a personal journey — sleep, food, exercise. Automate the process, make it easier for people.\n\nBuilding for yourself as much as others. Gets better the more you use it.\n\nStepping-stone toward the main AI health tool.',
+      'sg7_2':'PURPOSE: Building it for yourself anyway — launch it and make money on the side.\n\nWHAT: Public-facing Goal Monitoring app. Goals, sub-goals, tasks, habits with visual progress.\n\nStepping-stone + practical side income.',
+      'sg7_3':'THE ULTIMATE PRODUCT: Fully integrated AI health tool. Personalized across sleep, food, exercise. Adapts to each person. Gets better with use.\n\nNot separate from 7.1/7.2 — it IS the final version combining everything.\n\nTHIS generates the $100M single-day sale.\n\nDepends on audience from Goal 6 (15M/10M).\n\n$500 → 200k buyers ✓\n$1,000 → 100k buyers ✓',
+      'sg8_1':'PURPOSE: Going to social/business events, meeting people and women in the right circles = higher chance of meeting someone you like.\n\nDeliberate weekly effort, not leaving it to chance.\n\nNon-negotiable weekly action — same discipline as every other goal.',
+      'sg8_3':'PURPOSE: Biggest fear is rejection, especially with women. This course improves inner game, not just outer game.\n\nWHY: Going up to strangers — especially women — is the hardest social skill. Mastering it improves charisma, social skills, and resilience across everything.\n\nUNLOCKS: removes fear of rejection, approach anxiety, builds confidence, feeds into Goal 3 (Charismatic).',
+    };
+    S.projects.forEach(p=>{ if(allSgDescs[p.id]) p.description=allSgDescs[p.id]; });
+
+    S._backfilledDescsV3 = true;
+    save();
+  }catch(e){ console.warn('Backfill failed', e); }
 }
 
 // ── REFLECTION JOURNAL ───────────────────────────────────────────────────
@@ -8678,6 +8797,35 @@ function toggleYearCountdown(){
   const b=document.getElementById('year-cd-btn'); if(b) b.textContent = showYearCountdown?'🗓':'📆';
   buildYearCountdown();
 }
+function showInfo(title, desc){
+  const ex=document.getElementById('info-modal'); if(ex) ex.remove();
+  const m=document.createElement('div'); m.className='modal-bg open'; m.id='info-modal';
+  m.innerHTML=`<div class="modal" style="max-width:420px;max-height:85vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-size:.95rem;font-weight:700;flex:1;line-height:1.3;">${title}</div>
+      <button onclick="document.getElementById('info-modal').remove()" style="width:28px;height:28px;border-radius:50%;background:var(--sur);border:1px solid var(--bdr);display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--tx3);cursor:pointer;flex-shrink:0;margin-left:10px;">✕</button>
+    </div>
+    <div style="font-size:.78rem;color:var(--tx2);line-height:1.65;white-space:pre-line;">${escHtml(desc||'No details added yet. Tap Edit to add purpose, end state, and what it takes.')}</div>
+  </div>`;
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+function showGoalInfo(goalId){
+  const g = S.goals.find(g=>g.id===goalId); if(!g) return;
+  showInfo(g.name, g.description);
+}
+
+function showProjectInfo(projId){
+  const p = S.projects.find(p=>p.id===projId); if(!p) return;
+  showInfo(p.name, p.description);
+}
+
+function showHabitInfo(habId){
+  const h = S.habits.find(h=>h.id===habId); if(!h) return;
+  showInfo(h.name, h.hint);
+}
+
 function showAlert(title, msg){
   const ex=document.getElementById('alert-modal'); if(ex) ex.remove();
   const m=document.createElement('div'); m.className='modal-bg open'; m.id='alert-modal';
@@ -8693,6 +8841,7 @@ function showAlert(title, msg){
 function init(){
   migrateV37();
   seedAmeet2030();
+  backfillDescriptions();
   // One-time: collapse the old 3 seeded notes down to just the combined one,
   // but only remove the extras if they were never written in.
   if(!S.selfNotesMigratedV1){
