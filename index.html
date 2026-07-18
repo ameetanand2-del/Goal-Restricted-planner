@@ -4096,16 +4096,16 @@ function openTaskEdit(taskId){
         <option value="low" ${taskPriority(t)==='low'?'selected':''}>🔵 Low</option>
       </select>
     </div>
-    <div class="igrp"><label class="ilbl">Link to project (optional)</label>
-      <select class="inp" id="te-proj" style="appearance:none;">
-        <option value="">— no project —</option>
-        ${projs.map(p=>`<option value="${p.id}" ${t.projId===p.id?'selected':''}>${p.name}</option>`).join('')}
-      </select>
-    </div>
     <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
-      <select class="inp" id="te-goal" style="appearance:none;">
+      <select class="inp" id="te-goal" style="appearance:none;" onchange="filterSubGoalsByGoal()">
         <option value="">— no goal —</option>
         ${goals.map(g=>`<option value="${g.id}" ${t.goalId===g.id?'selected':''}>${g.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="igrp"><label class="ilbl">Link to sub-goal (optional)</label>
+      <select class="inp" id="te-proj" style="appearance:none;">
+        <option value="">— no sub-goal —</option>
+        ${projs.filter(p=>!t.goalId || p.goalId===t.goalId).map(p=>`<option value="${p.id}" ${t.projId===p.id?'selected':''}>${p.name}</option>`).join('')}
       </select>
     </div>
     <div class="igrp"><label class="ilbl">Notes (optional)</label><textarea class="inp" id="te-notes" rows="2">${t.notes||''}</textarea></div>
@@ -4122,8 +4122,33 @@ function saveTaskEdit(taskId){
   t.priority=document.getElementById('te-pri')?.value||'';
   t.projId=document.getElementById('te-proj')?.value||null;
   t.goalId=document.getElementById('te-goal')?.value||null;
+  // Auto-set goalId from project if not explicitly set
+  if(t.projId && !t.goalId){
+    const proj = S.projects.find(p=>p.id===t.projId);
+    if(proj && proj.goalId) t.goalId = proj.goalId;
+  }
   t.notes=document.getElementById('te-notes')?.value.trim()||'';
   save(); closeModal('modal-main'); buildTasksList(); buildDailyTasks(); toast('Task updated ✓');
+}
+
+function filterSubGoalsByGoal(){
+  const goalId = document.getElementById('te-goal')?.value||'';
+  const projSel = document.getElementById('te-proj');
+  if(!projSel) return;
+  const projs = S.projects.filter(p=>!p.archived);
+  const filtered = goalId ? projs.filter(p=>p.goalId===goalId) : projs;
+  projSel.innerHTML = '<option value="">— no sub-goal —</option>' +
+    filtered.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+function filterQaSubGoals(){
+  const goalId = document.getElementById('qa-goal')?.value||'';
+  const projSel = document.getElementById('qa-proj');
+  if(!projSel) return;
+  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
+  const filtered = goalId ? projs.filter(p=>p.goalId===goalId) : projs;
+  projSel.innerHTML = '<option value="">— unlinked —</option>' +
+    filtered.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
 }
 
 function archiveTask(taskId){
@@ -6599,16 +6624,16 @@ function quickAddTaskBody(){
   const goals=S.goals.filter(g=>!g.archived);
   return `<div class="igrp"><label class="ilbl">Task</label><input class="inp" id="qa-name" placeholder="What needs to be done…"/></div>
   <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="qa-due"/></div>
-  <div class="igrp"><label class="ilbl">Link to project (optional)</label>
+  <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
+    <select class="inp" id="qa-goal" style="appearance:none;" onchange="filterQaSubGoals()">
+      <option value="">— unlinked —</option>
+      ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
+    </select>
+  </div>
+  <div class="igrp"><label class="ilbl">Link to sub-goal (optional)</label>
     <select class="inp" id="qa-proj" style="appearance:none;">
       <option value="">— unlinked —</option>
       ${projs.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
-    </select>
-  </div>
-  <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
-    <select class="inp" id="qa-goal" style="appearance:none;">
-      <option value="">— unlinked —</option>
-      ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
     </select>
   </div>
   <button class="btn btp bfu" onclick="saveTask()">Add task</button>`;
@@ -6676,7 +6701,12 @@ function saveTask(){
   const week=document.getElementById('qa-week')?.value||'';
   const day=document.getElementById('qa-day')?.value||'Any';
   const projId=document.getElementById('qa-proj')?.value||null;
-  const goalId=document.getElementById('qa-goal')?.value||null;
+  let goalId=document.getElementById('qa-goal')?.value||null;
+  // Auto-set goalId from sub-goal if not explicitly set
+  if(projId && !goalId){
+    const proj = S.projects.find(p=>p.id===projId);
+    if(proj && proj.goalId) goalId = proj.goalId;
+  }
   S.tasks.push({id:uid(),name,week,day,projId,goalId,archived:false,createdAt:today()});
   save(); closeModal('modal-main'); buildTasksList(); buildDailyTasks(); toast('Task added ✓');
 }
