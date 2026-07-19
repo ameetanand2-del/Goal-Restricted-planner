@@ -65,6 +65,7 @@ input,textarea,select{font-family:inherit;}
 /* Floating Action Button */
 #fab-container{position:fixed;bottom:calc(var(--navh) + var(--sb) + 58px);right:16px;z-index:25;}
 #task-pill{position:fixed;bottom:calc(var(--navh) + var(--sb) + 12px);left:50%;transform:translateX(-50%);z-index:25;flex-direction:row;align-items:center;justify-content:center;max-width:calc(100vw - 24px);}
+#daily-pill{position:fixed;bottom:calc(var(--navh) + var(--sb) + 12px);left:50%;transform:translateX(-50%);z-index:25;display:none;flex-direction:row;align-items:center;justify-content:center;}
 .task-pill-main{display:inline-flex;align-items:center;gap:6px;background:var(--a);color:#fff;border:none;border-radius:99px;padding:6px 13px;font-size:.68rem;font-weight:700;box-shadow:0 3px 10px rgba(232,98,42,.32);cursor:pointer;white-space:nowrap;}
 #task-pill-menu{display:none;flex-direction:row;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:1px;}
 .task-pill-opt{display:inline-flex;align-items:center;gap:4px;background:var(--bg);color:var(--tx);border:1px solid var(--bdr);border-radius:99px;padding:6px 11px;font-size:.66rem;font-weight:600;box-shadow:0 2px 9px rgba(0,0,0,.15);cursor:pointer;white-space:nowrap;}
@@ -552,16 +553,10 @@ select.inp{appearance:none;}
 
   <!-- ░░ HABITS VIEW ░░ -->
   <div id="daily-view-habits">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="sl" style="margin:0;">✨ Today's principles</div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
-          <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
-        </button>
-        <button onclick="toggleDailyView()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;cursor:pointer;">
-          📋 To-dos
-        </button>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px;">
+      <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+        <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
+      </button>
     </div>
     <div id="daily-habits-list"></div>
     <div id="night-routine-section"></div>
@@ -570,12 +565,6 @@ select.inp{appearance:none;}
 
   <!-- ░░ TO-DOS VIEW ░░ -->
   <div id="daily-view-todos" style="display:none;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="sl" style="margin:0;">📋 To-dos</div>
-      <button onclick="toggleDailyView()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;cursor:pointer;">
-        ✨ Principles
-      </button>
-    </div>
     <!-- Plan your day section (for non-daily habits) -->
     <div id="plan-day-section"></div>
     <!-- Today's study -->
@@ -784,15 +773,31 @@ select.inp{appearance:none;}
 
 <!-- Floating expandable task-section switcher pill -->
 <div id="task-pill" style="display:none;">
-  <button id="task-pill-btn" class="task-pill-main" onclick="toggleTaskPill()">
-    <span id="task-pill-label">Scheduled</span>
-  </button>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button id="task-pill-btn" class="task-pill-main" onclick="toggleTaskPill()">
+      <span id="task-pill-label">Scheduled</span>
+    </button>
+    <button id="task-focus-btn" onclick="toggleTaskFocusFilter()" style="border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);cursor:pointer;white-space:nowrap;">
+      🎯 Focus
+    </button>
+  </div>
   <div id="task-pill-menu"></div>
 </div>
 
 <!-- Floating Action Button (Tasks) -->
 <div id="fab-container" style="display:none;">
   <button class="fab" onclick="openNewTaskModal('')">+</button>
+</div>
+
+<!-- Floating daily view switcher pill -->
+<div id="daily-pill">
+  <button id="daily-pill-btn" class="task-pill-main" onclick="toggleDailyPill()">
+    <span id="daily-pill-label">✨ Principles</span>
+  </button>
+  <div id="daily-pill-menu" style="display:none;flex-direction:row;gap:5px;padding:1px;">
+    <button class="task-pill-opt on" id="dp-habits" onclick="setDailyViewFromPill('habits')">✨ Principles</button>
+    <button class="task-pill-opt" id="dp-todos" onclick="setDailyViewFromPill('todos')">📋 To-dos</button>
+  </div>
 </div>
 
 <!-- Floating Action Button with Menu (Goals) -->
@@ -1048,6 +1053,8 @@ function goTab(id, el){
   if(goalsFab) goalsFab.style.display = (id === 'goals') ? 'block' : 'none';
   const taskPill = document.getElementById('task-pill');
   if(taskPill){ taskPill.style.display = (id === 'plan') ? 'flex' : 'none'; if(id==='plan'){ taskPillOpen=false; renderTaskPill(); } }
+  const dailyPill = document.getElementById('daily-pill');
+  if(dailyPill){ dailyPill.style.display = (id === 'home') ? 'flex' : 'none'; if(id==='home'){ dailyPillOpen=false; } }
   
   if(id==='home')     buildDailyView();
   if(id==='plan')     buildWeeklyView();
@@ -3253,12 +3260,38 @@ function wireFocusSwipe(){
 }
 
 let dailyView = (typeof localStorage!=='undefined' && localStorage.getItem('dailyView')) || 'habits';
+let dailyPillOpen = false;
+
+function toggleDailyPill(){
+  dailyPillOpen = !dailyPillOpen;
+  const btn = document.getElementById('daily-pill-btn');
+  const menu = document.getElementById('daily-pill-menu');
+  if(btn) btn.style.display = dailyPillOpen ? 'none' : 'inline-flex';
+  if(menu) menu.style.display = dailyPillOpen ? 'flex' : 'none';
+}
+
+function setDailyViewFromPill(v){
+  dailyPillOpen = false;
+  setDailyView(v);
+}
+
 function setDailyView(v){
   dailyView = (v==='todos') ? 'todos' : 'habits';
   try{ localStorage.setItem('dailyView', dailyView); }catch(e){}
   const h=document.getElementById('daily-view-habits'), t=document.getElementById('daily-view-todos');
   if(h) h.style.display = dailyView==='habits'?'':'none';
   if(t) t.style.display = dailyView==='todos'?'':'none';
+  // Update pill
+  const btn = document.getElementById('daily-pill-btn');
+  const menu = document.getElementById('daily-pill-menu');
+  const lbl = document.getElementById('daily-pill-label');
+  if(btn) btn.style.display = 'inline-flex';
+  if(menu) menu.style.display = 'none';
+  if(lbl) lbl.textContent = dailyView==='habits' ? '✨ Principles' : '📋 To-dos';
+  const dh = document.getElementById('dp-habits');
+  const dt = document.getElementById('dp-todos');
+  if(dh) dh.classList.toggle('on', dailyView==='habits');
+  if(dt) dt.classList.toggle('on', dailyView==='todos');
 }
 function toggleDailyView(){
   setDailyView(dailyView==='habits' ? 'todos' : 'habits');
@@ -3623,6 +3656,7 @@ function buildWeeklyView(){ buildTasksList(); } // called from goTab('plan')
 let taskFilter = 'today';
 let taskGrouped = true;
 let taskTab = 'scheduled';            // scheduled | brain | calendar | done
+let taskFocusFilter = false;          // when true, only show tasks linked to focused sub-goals
 let taskCalMonth = null;              // {y,m} for calendar view; null = current month
 let taskCalSelected = null;           // 'YYYY-MM-DD' selected day in calendar
 
@@ -3666,6 +3700,20 @@ function renderTaskPill(){
       ? TASK_TABS.map(t=>`<button class="task-pill-opt${t.id===taskTab?' on':''}" onclick="setTaskTab('${t.id}')">${t.icon} ${t.short}</button>`).join('')
       : '';
   }
+  // Update focus button style
+  const fb = document.getElementById('task-focus-btn');
+  if(fb){
+    fb.style.background = taskFocusFilter ? 'var(--blue)' : 'var(--sur)';
+    fb.style.color = taskFocusFilter ? '#fff' : 'var(--tx2)';
+    fb.style.borderColor = taskFocusFilter ? 'var(--blue)' : 'var(--bdr)';
+  }
+}
+
+function toggleTaskFocusFilter(){
+  taskFocusFilter = !taskFocusFilter;
+  renderTaskPill();
+  buildTasksList();
+  toast(taskFocusFilter ? '🎯 Showing focus tasks only' : 'Showing all tasks');
 }
 
 function setTaskFilter(f, el){
@@ -3690,7 +3738,14 @@ function buildTasksList(){
 
   if(taskTab==='calendar'){ renderTaskCalendar(el); return; }
 
-  const open = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && !t.done);
+  let open = S.tasks.filter(t=>!t.archived && !isTaskFromFutureGoal(t) && !t.done);
+  
+  // Apply focus filter if active
+  if(taskFocusFilter){
+    const focusedProjIds = S.projects.filter(p=>p.focused).map(p=>p.id);
+    const focusedGoalIds = [...new Set(S.projects.filter(p=>p.focused).map(p=>p.goalId).filter(Boolean))];
+    open = open.filter(t=> (t.projId && focusedProjIds.includes(t.projId)) || (t.goalId && focusedGoalIds.includes(t.goalId)));
+  }
   let tasks=[], emptyMsg='';
   if(taskTab==='scheduled'){
     tasks = open.filter(t=>t.dueDate);
@@ -3995,9 +4050,17 @@ function openNewTaskModalToday(){
 }
 
 function openNewTaskModal(prefill){
-  // Only show active goals and projects (not archived, not future)
-  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned'&&!isProjectFromFutureGoal(p));
-  const goals = S.goals.filter(g=>!g.archived&&!g.future);
+  // Only show active goals and projects (not archived, not future, not complete)
+  const allProjs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned'&&p.status!=='complete'&&!isProjectFromFutureGoal(p));
+  const allGoals = S.goals.filter(g=>!g.archived&&!g.future);
+  const focusedProjs = allProjs.filter(p=>p.focused);
+  const focusedGoalIds = [...new Set(focusedProjs.map(p=>p.goalId).filter(Boolean))];
+  const hasFocused = focusedProjs.length > 0;
+  
+  // If task focus filter is on, only show focused items
+  const showProjs = taskFocusFilter ? focusedProjs : allProjs;
+  const showGoals = taskFocusFilter ? allGoals.filter(g=>focusedGoalIds.includes(g.id)) : allGoals;
+  
   document.getElementById('modal-title').textContent = 'New task';
   document.getElementById('modal-body').innerHTML=`
     <div class="igrp"><label class="ilbl">Task name</label><input class="inp" id="nt-name" placeholder="What needs to be done…" value="${prefill||''}"/></div>
@@ -4015,38 +4078,71 @@ function openNewTaskModal(prefill){
         <option value="low">🔵 Low</option>
       </select>
     </div>
-    <div class="igrp"><label class="ilbl">Project (optional)</label>
-      <select class="inp" id="nt-proj" style="appearance:none;" onchange="onTaskProjChange()">
-        <option value="">— none —</option>
-        ${projs.map(p=>`<option value="${p.id}" data-goal="${p.goalId||''}">${p.name}</option>`).join('')}
-      </select>
-    </div>
+    ${hasFocused ? `<div class="igrp" style="display:flex;align-items:center;gap:8px;">
+      <label style="font-size:.72rem;color:var(--tx2);flex:1;">Show only 🎯 focused sub-goals</label>
+      <button id="nt-focus-toggle" onclick="toggleNtFocus()" style="font-size:.7rem;padding:4px 10px;border-radius:12px;border:1px solid ${taskFocusFilter?'var(--blue)':'var(--bdr)'};background:${taskFocusFilter?'var(--blue)':'var(--sur)'};cursor:pointer;color:${taskFocusFilter?'#fff':'var(--tx2)'};">${taskFocusFilter?'🎯 On':'Off'}</button>
+    </div>` : ''}
     <div class="igrp"><label class="ilbl">Goal (optional)</label>
       <select class="inp" id="nt-goal" style="appearance:none;" onchange="onTaskGoalChange()">
         <option value="">— none —</option>
-        ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
+        ${showGoals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="igrp"><label class="ilbl">Sub-goal (optional)</label>
+      <select class="inp" id="nt-proj" style="appearance:none;" onchange="onTaskProjChange()">
+        <option value="">— none —</option>
+        ${showProjs.map(p=>`<option value="${p.id}" data-goal="${p.goalId||''}">${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
       </select>
     </div>
     <div class="igrp"><label class="ilbl">Notes (optional)</label><textarea class="inp" id="nt-notes" rows="2" placeholder="Any extra detail…"></textarea></div>
     <button class="btn btp bfu" onclick="saveNewTask()">Add task</button>`;
   openModal('modal-main');
+  ntFocusOn = taskFocusFilter;
   setTimeout(()=>document.getElementById('nt-name')?.focus(),120);
 }
 
+let ntFocusOn = false;
+
+function toggleNtFocus(){
+  ntFocusOn = !ntFocusOn;
+  const btn = document.getElementById('nt-focus-toggle');
+  if(btn){
+    btn.textContent = ntFocusOn ? '🎯 On' : 'Off';
+    btn.style.background = ntFocusOn ? 'var(--blue)' : 'var(--sur)';
+    btn.style.color = ntFocusOn ? '#fff' : 'var(--tx2)';
+    btn.style.borderColor = ntFocusOn ? 'var(--blue)' : 'var(--bdr)';
+  }
+  rebuildNtDropdowns();
+}
+
+function rebuildNtDropdowns(){
+  const goalSel = document.getElementById('nt-goal');
+  const projSel = document.getElementById('nt-proj');
+  
+  const allProjs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned'&&p.status!=='complete'&&!isProjectFromFutureGoal(p));
+  const allGoals = S.goals.filter(g=>!g.archived&&!g.future);
+  const focusedProjs = allProjs.filter(p=>p.focused);
+  const focusedGoalIds = [...new Set(focusedProjs.map(p=>p.goalId).filter(Boolean))];
+  
+  const showGoals = ntFocusOn ? allGoals.filter(g=>focusedGoalIds.includes(g.id)) : allGoals;
+  if(goalSel){
+    const prev = goalSel.value;
+    goalSel.innerHTML = '<option value="">— none —</option>' +
+      showGoals.map(g=>`<option value="${g.id}" ${g.id===prev?'selected':''}>${g.name}</option>`).join('');
+  }
+  
+  const goalId = goalSel?.value||'';
+  let showProjs = ntFocusOn ? focusedProjs : allProjs;
+  if(goalId) showProjs = showProjs.filter(p=>p.goalId===goalId);
+  if(projSel){
+    const prev = projSel.value;
+    projSel.innerHTML = '<option value="">— none —</option>' +
+      showProjs.map(p=>`<option value="${p.id}" ${p.id===prev?'selected':''} data-goal="${p.goalId||''}">${p.focused?'🎯 ':''}${p.name}</option>`).join('');
+  }
+}
+
 function onTaskGoalChange(){
-  const goalId = document.getElementById('nt-goal')?.value;
-  const projSelect = document.getElementById('nt-proj');
-  if(!projSelect) return;
-  
-  // Only show active projects (not from future goals)
-  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned'&&!isProjectFromFutureGoal(p));
-  
-  // Filter projects by selected goal
-  let filteredProjs = goalId ? projs.filter(p => p.goalId === goalId) : projs;
-  
-  // Rebuild project dropdown
-  projSelect.innerHTML = `<option value="">— select project —</option>` +
-    filteredProjs.map(p => `<option value="${p.id}" data-goal="${p.goalId||''}">${p.name}</option>`).join('');
+  rebuildNtDropdowns();
 }
 
 function onTaskProjChange(){
@@ -4166,17 +4262,25 @@ function openTaskEdit(taskId){
         <option value="med" ${taskPriority(t)==='med'?'selected':''}>🟠 Medium</option>
         <option value="low" ${taskPriority(t)==='low'?'selected':''}>🔵 Low</option>
       </select>
-    </div>
+    </div>`;
+    const focusedProjs = projs.filter(p=>p.focused);
+    const focusedGoalIds = [...new Set(focusedProjs.map(p=>p.goalId).filter(Boolean))];
+    const activeGoals = goals.filter(g=>!g.archived);
+    const activeProjs = projs.filter(p=>p.status!=='complete' && p.status!=='abandoned');
+    const editShowGoals = taskFocusFilter ? activeGoals.filter(g=>focusedGoalIds.includes(g.id) || g.id===t.goalId) : activeGoals;
+    const editFilteredProjs = activeProjs.filter(p=>!t.goalId || p.goalId===t.goalId);
+    const editShowProjs = taskFocusFilter ? editFilteredProjs.filter(p=>p.focused || p.id===t.projId) : editFilteredProjs;
+    html += `
     <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
       <select class="inp" id="te-goal" style="appearance:none;" onchange="filterSubGoalsByGoal()">
         <option value="">— no goal —</option>
-        ${goals.map(g=>`<option value="${g.id}" ${t.goalId===g.id?'selected':''}>${g.name}</option>`).join('')}
+        ${editShowGoals.map(g=>`<option value="${g.id}" ${t.goalId===g.id?'selected':''}>${g.name}</option>`).join('')}
       </select>
     </div>
     <div class="igrp"><label class="ilbl">Link to sub-goal (optional)</label>
       <select class="inp" id="te-proj" style="appearance:none;">
         <option value="">— no sub-goal —</option>
-        ${projs.filter(p=>!t.goalId || p.goalId===t.goalId).map(p=>`<option value="${p.id}" ${t.projId===p.id?'selected':''}>${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
+        ${editShowProjs.map(p=>`<option value="${p.id}" ${t.projId===p.id?'selected':''}>${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
       </select>
     </div>
     <div class="igrp"><label class="ilbl">Notes (optional)</label><textarea class="inp" id="te-notes" rows="2">${t.notes||''}</textarea></div>
@@ -4206,10 +4310,11 @@ function filterSubGoalsByGoal(){
   const goalId = document.getElementById('te-goal')?.value||'';
   const projSel = document.getElementById('te-proj');
   if(!projSel) return;
-  const projs = S.projects.filter(p=>!p.archived);
-  const filtered = goalId ? projs.filter(p=>p.goalId===goalId) : projs;
+  let projs = S.projects.filter(p=>!p.archived && p.status!=='complete' && p.status!=='abandoned');
+  if(goalId) projs = projs.filter(p=>p.goalId===goalId);
+  if(taskFocusFilter) projs = projs.filter(p=>p.focused);
   projSel.innerHTML = '<option value="">— no sub-goal —</option>' +
-    filtered.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('');
+    projs.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('');
 }
 
 let qaFocusOn = false;
@@ -4222,18 +4327,50 @@ function toggleQaFocus(){
     btn.style.background = qaFocusOn ? 'var(--blue)' : 'var(--sur)';
     btn.style.color = qaFocusOn ? '#fff' : 'var(--tx2)';
   }
-  filterQaSubGoals();
+  rebuildQaDropdowns();
+}
+
+function initQaFocus(){
+  qaFocusOn = taskFocusFilter;
+  const btn = document.getElementById('qa-focus-toggle');
+  if(btn){
+    btn.textContent = qaFocusOn ? '🎯 On' : 'Off';
+    btn.style.background = qaFocusOn ? 'var(--blue)' : 'var(--sur)';
+    btn.style.color = qaFocusOn ? '#fff' : 'var(--tx2)';
+  }
+  rebuildQaDropdowns();
+}
+
+function rebuildQaDropdowns(){
+  const goalSel = document.getElementById('qa-goal');
+  const projSel = document.getElementById('qa-proj');
+  
+  const allProjs = S.projects.filter(p=>!p.archived && p.status!=='abandoned' && p.status!=='complete');
+  const allGoals = S.goals.filter(g=>!g.archived);
+  const focusedProjs = allProjs.filter(p=>p.focused);
+  const focusedGoalIds = [...new Set(focusedProjs.map(p=>p.goalId).filter(Boolean))];
+  
+  // Filter goals
+  const showGoals = qaFocusOn ? allGoals.filter(g=>focusedGoalIds.includes(g.id)) : allGoals;
+  if(goalSel){
+    const prev = goalSel.value;
+    goalSel.innerHTML = '<option value="">— unlinked —</option>' +
+      showGoals.map(g=>`<option value="${g.id}" ${g.id===prev?'selected':''}>${g.name}</option>`).join('');
+  }
+  
+  // Filter sub-goals by selected goal + focus
+  const goalId = goalSel?.value||'';
+  let showProjs = qaFocusOn ? focusedProjs : allProjs;
+  if(goalId) showProjs = showProjs.filter(p=>p.goalId===goalId);
+  if(projSel){
+    const prev = projSel.value;
+    projSel.innerHTML = '<option value="">— unlinked —</option>' +
+      showProjs.map(p=>`<option value="${p.id}" ${p.id===prev?'selected':''}>${p.focused?'🎯 ':''}${p.name}</option>`).join('');
+  }
 }
 
 function filterQaSubGoals(){
-  const goalId = document.getElementById('qa-goal')?.value||'';
-  const projSel = document.getElementById('qa-proj');
-  if(!projSel) return;
-  let projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
-  if(goalId) projs = projs.filter(p=>p.goalId===goalId);
-  if(qaFocusOn) projs = projs.filter(p=>p.focused);
-  projSel.innerHTML = '<option value="">— unlinked —</option>' +
-    projs.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('');
+  rebuildQaDropdowns();
 }
 
 function archiveTask(taskId){
@@ -6636,6 +6773,7 @@ function openQuickAdd(type, preGoalId){
   document.getElementById('modal-title').textContent=m.title;
   document.getElementById('modal-body').innerHTML=m.body();
   openModal('modal-main');
+  if(type==='task' && typeof afterQuickAddTask==='function') afterQuickAddTask();
 }
 
 function quickAddGoalBody(){
@@ -6698,10 +6836,17 @@ function quickAddHabitBody(){
 }
 
 function quickAddTaskBody(){
-  const projs=S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
-  const goals=S.goals.filter(g=>!g.archived);
-  const focusedProjs = projs.filter(p=>p.focused);
+  const allProjs=S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
+  const allGoals=S.goals.filter(g=>!g.archived);
+  const focusedProjs = allProjs.filter(p=>p.focused);
   const hasFocused = focusedProjs.length > 0;
+  const defaultFocusOn = taskFocusFilter;
+  
+  // If focus is on, only show goals that have focused sub-goals + only focused sub-goals
+  const showProjs = defaultFocusOn ? focusedProjs : allProjs;
+  const focusedGoalIds = [...new Set(focusedProjs.map(p=>p.goalId).filter(Boolean))];
+  const showGoals = defaultFocusOn ? allGoals.filter(g=>focusedGoalIds.includes(g.id)) : allGoals;
+  
   return `<div class="igrp"><label class="ilbl">Task</label><input class="inp" id="qa-name" placeholder="What needs to be done…"/></div>
   <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="qa-due"/></div>
   ${hasFocused ? `<div class="igrp" style="display:flex;align-items:center;gap:8px;">
@@ -6711,17 +6856,20 @@ function quickAddTaskBody(){
   <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
     <select class="inp" id="qa-goal" style="appearance:none;" onchange="filterQaSubGoals()">
       <option value="">— unlinked —</option>
-      ${goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
+      ${showGoals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}
     </select>
   </div>
   <div class="igrp"><label class="ilbl">Link to sub-goal (optional)</label>
     <select class="inp" id="qa-proj" style="appearance:none;">
       <option value="">— unlinked —</option>
-      ${projs.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
+      ${showProjs.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
     </select>
   </div>
   <button class="btn btp bfu" onclick="saveTask()">Add task</button>`;
 }
+
+// Called after quickAddTaskBody is rendered
+function afterQuickAddTask(){ initQaFocus(); }
 
 function saveGoal(){
   const name=document.getElementById('qa-name')?.value.trim(); if(!name){ toast('Enter a name'); return; }
