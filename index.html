@@ -859,6 +859,7 @@ def('reflectionJournal',{}); // {date: [{qid, question, answer}]}
 def('dailyTaskOrder',[]); // [taskId, taskId, ...] — persistent task order in daily view
 def('dailyTaskGroupOrder',[]); // [groupKey, groupKey, ...] — order of task groups in daily view
 def('plannedHabits',{}); // {date: {habitId: 'yes'|'nottoday'}} — planning decisions for non-daily habits
+def('starSnapshot',{}); // {date: [habitId,...]} — which habits were starred on each day, frozen once set
 def('rewards',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'unlocked'|'claimed',progress:{},unlockedAt,claimedAt,createdAt}]
 def('milestones',[]); // [{id,name,conditions:[{type,value,targetId?}],status:'active'|'reached'|'acknowledged',note,reachedAt,acknowledgedAt,createdAt}]
 def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit groups in daily view
@@ -1096,6 +1097,8 @@ function buildDailyView(){
   // Check for overcommitment warning
   checkOvercommitmentWarning();
   
+  // Snapshot today's starred habits
+  snapshotStarsForToday();
   // Build commitment section (or unlock content if committed)
   buildCommitSection();
   
@@ -1496,13 +1499,11 @@ function checkOvercommitmentWarning(){
     dates.push(localDate(d));
   }
   
-  // Calculate if commitment was met for past days (based on 100% completion)
+  // Calculate if commitment was met for past days (starred habits = met)
   dates.forEach(date => {
     const commitment = S.commitments?.[date];
     if(commitment && commitment.committed && commitment.met === null){
-      // Met = 100% completion
-      const dayData = getDayCompletionData(date, habits);
-      commitment.met = dayData.pct === 100;
+      commitment.met = isDayMet(date, habits);
       save();
     }
   });
@@ -3309,12 +3310,48 @@ function updateRingTarget(){
 function toggleHabitImportant(habId){
   const h = S.habits.find(x=>x.id===habId); if(!h) return;
   h.important = !h.important;
+  // Update today's snapshot whenever stars change
+  snapshotStarsForToday();
   save();
   const b = document.getElementById('wtstar-'+habId);
   if(b){ b.textContent = h.important?'★':'☆'; b.style.color = h.important?'var(--a)':'var(--tx3)'; }
   if(document.getElementById('wt-summary')) recalcWeightTotals();
   buildDailyHabits();
   updateRingTarget();
+}
+
+// Snapshot which habits are starred today — called once per day load and on star toggle
+function snapshotStarsForToday(){
+  const td = today();
+  if(!S.starSnapshot) S.starSnapshot = {};
+  const active = getActiveHabits();
+  const starred = active.filter(h => h.important).map(h => h.id);
+  S.starSnapshot[td] = starred;
+}
+
+// Get the starred habit IDs for a given day — uses snapshot if available, otherwise current state
+function getStarredForDay(day){
+  if(S.starSnapshot && S.starSnapshot[day]){
+    return S.starSnapshot[day];
+  }
+  // No snapshot for this day — fall back to current starred state (only happens for days before this feature existed)
+  const active = getActiveHabits();
+  return active.filter(h => h.important).map(h => h.id);
+}
+
+// Check if a day is "met" based on that day's starred snapshot
+function isDayMet(day, habits){
+  const starredIds = getStarredForDay(day);
+  if(starredIds.length === 0){
+    // No starred habits for that day — fall back to 100% completion
+    const dayData = getDayCompletionData(day, habits);
+    return dayData.pct === 100;
+  }
+  // Check if all starred habits (from that day's snapshot) are done
+  for(const hId of starredIds){
+    if(getHabitState(day, hId) !== 'done') return false;
+  }
+  return true;
 }
 
 function updateRing(){
@@ -4312,12 +4349,9 @@ function buildTrackerHabits(){
           label = '';
           emoji = '';
           color = '';
-        } else if(!committed){
-          label = 'No';
-          emoji = '⚪';
-          color = 'var(--tx3)';
         } else {
-          const met = dayData.pct === 100;
+          // Met = all starred habits (from that day's snapshot) done
+          const met = isDayMet(day, habits);
           if(met){
             label = 'Met';
             emoji = '✅';
@@ -5687,6 +5721,7 @@ function getRewardProgress(reward){
 function getCommitmentStreak(){
   let streak = 0;
   const td = today();
+  const habits = S.habits.filter(h => !h.archived && !isHabitFromFutureGoal(h));
   
   for(let i = 0; i < 365; i++){
     const d = new Date();
@@ -5695,14 +5730,7 @@ function getCommitmentStreak(){
     
     if(dateStr === td) continue; // Skip today (not yet evaluated)
     
-    const commitment = S.commitments?.[dateStr];
-    if(!commitment || !commitment.committed) break;
-    
-    // Check if met (100% completion)
-    const habits = S.habits.filter(h => !h.archived && !isHabitFromFutureGoal(h));
-    const dayData = getDayCompletionData(dateStr, habits);
-    if(dayData.pct !== 100) break;
-    
+    if(!isDayMet(dateStr, habits)) break;
     streak++;
   }
   
