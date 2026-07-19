@@ -550,19 +550,18 @@ select.inp{appearance:none;}
   <!-- Focus queue bar (items swiped right land here) -->
   <div id="focus-bar" style="display:none;margin-bottom:9px;"></div>
 
-  <!-- Habits / To-dos view toggle -->
-  <div class="tab-switch" style="margin-bottom:12px;">
-    <div class="ts-btn on" id="dv-habits" onclick="setDailyView('habits')">✨ Principles</div>
-    <div class="ts-btn" id="dv-todos" onclick="setDailyView('todos')">📋 To-dos</div>
-  </div>
-
   <!-- ░░ HABITS VIEW ░░ -->
   <div id="daily-view-habits">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <div class="sl" style="margin:0;">✨ Today's principles</div>
-      <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
-        <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
-      </button>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button id="daily-habit-group-toggle" onclick="toggleDailyHabitGrouping()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;">
+          <span id="daily-habit-group-icon">▤</span> <span id="daily-habit-group-label">Grouped</span>
+        </button>
+        <button onclick="toggleDailyView()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;cursor:pointer;">
+          📋 To-dos
+        </button>
+      </div>
     </div>
     <div id="daily-habits-list"></div>
     <div id="night-routine-section"></div>
@@ -571,6 +570,12 @@ select.inp{appearance:none;}
 
   <!-- ░░ TO-DOS VIEW ░░ -->
   <div id="daily-view-todos" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="sl" style="margin:0;">📋 To-dos</div>
+      <button onclick="toggleDailyView()" style="white-space:nowrap;border-radius:99px;border:1px solid var(--bdr);padding:5px 10px;font-size:.65rem;font-weight:600;background:var(--sur);color:var(--tx2);display:flex;align-items:center;gap:4px;cursor:pointer;">
+        ✨ Principles
+      </button>
+    </div>
     <!-- Plan your day section (for non-daily habits) -->
     <div id="plan-day-section"></div>
     <!-- Today's study -->
@@ -651,7 +656,7 @@ select.inp{appearance:none;}
   <!-- Goals Filter Toggle -->
   <div class="goals-filter-wrap" id="goals-filter-wrap">
     <button class="gf-btn on" onclick="setGoalsFilter('all')">All</button>
-    <button class="gf-btn" onclick="setGoalsFilter('goals')">Goals</button>
+    <button class="gf-btn" onclick="setGoalsFilter('focus')">🎯 Focus</button>
     <button class="gf-btn" onclick="setGoalsFilter('projects')">Sub-goals</button>
     <button class="gf-btn" onclick="setGoalsFilter('habits')">Principles</button>
   </div>
@@ -866,7 +871,8 @@ def('dailyHabitGroupOrder',[]); // [groupKey, groupKey, ...] — order of habit 
 def('dailyHabitOrder',[]); // [habitId, habitId, ...] — order of habits in sequence mode
 def('weeklyGoals',{}); // {weekKey: [{id, type:'goal'|'project'|'task', targetId, status:'active'|'completed'|'notcompleted'|'moved', addedAt, completedAt, cat}]}
 def('restrictionOverrideUntil',null); // ISO timestamp when override expires
-def('goalsFilterMode','all'); // 'all' | 'goals' | 'projects' | 'habits'
+def('goalsFilterMode','all'); // 'all' | 'goals' | 'projects' | 'habits' | 'focus'
+def('taskFocusDefault',false); // when true, new tasks default to showing only focused sub-goals
 def('chores',[]);        // [{id,name,recur:{type:'none'|'daily'|'weekly'|'monthly',days:[0-6],dom:1-31},archived,createdAt}]
 def('choreLog',{});      // {date:{choreId:1}} — completion per day
 def('choreToday',{});    // {date:[choreId,...]} — chores surfaced for that day (max 3)
@@ -3253,9 +3259,9 @@ function setDailyView(v){
   const h=document.getElementById('daily-view-habits'), t=document.getElementById('daily-view-todos');
   if(h) h.style.display = dailyView==='habits'?'':'none';
   if(t) t.style.display = dailyView==='todos'?'':'none';
-  const bh=document.getElementById('dv-habits'), bt=document.getElementById('dv-todos');
-  if(bh) bh.classList.toggle('on', dailyView==='habits');
-  if(bt) bt.classList.toggle('on', dailyView==='todos');
+}
+function toggleDailyView(){
+  setDailyView(dailyView==='habits' ? 'todos' : 'habits');
 }
 function clearTodaysTasks(){
   const td=today();
@@ -3718,8 +3724,36 @@ function buildTasksList(){
       {lbl:'Today',    col:'var(--a2)',   items:dated.filter(t=>t.dueDate===td)},
       {lbl:'Upcoming', col:'var(--blue)', items:dated.filter(t=>t.dueDate>td)}
     ];
-    // In the All tab, unscheduled tasks (Brain dump) appear as their own section
-    if(taskTab==='all') secs.push({lbl:'🧠 Brain dump', col:'var(--tx3)', items:undated});
+    // In the All tab, group by goal → sub-goal
+    if(taskTab==='all'){
+      let html='';
+      // Group all tasks (dated + undated) by goal then sub-goal
+      const allTasks = [...dated, ...undated];
+      const goalGroups = {};
+      allTasks.forEach(t=>{
+        const gId = t.goalId || '_ungrouped';
+        if(!goalGroups[gId]) goalGroups[gId] = {};
+        const pId = t.projId || '_nosub';
+        if(!goalGroups[gId][pId]) goalGroups[gId][pId] = [];
+        goalGroups[gId][pId].push(t);
+      });
+      // Render grouped
+      const goalOrder = [...S.goals.filter(g=>goalGroups[g.id]), ...(goalGroups['_ungrouped']?[{id:'_ungrouped',name:'Ungrouped'}]:[])];
+      goalOrder.forEach(g=>{
+        const subGroups = goalGroups[g.id]; if(!subGroups) return;
+        html+=`<div style="margin-bottom:16px;">
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2);margin-bottom:6px;">${g.name}</div>`;
+        Object.keys(subGroups).forEach(pId=>{
+          const proj = S.projects.find(p=>p.id===pId);
+          const pName = proj ? (proj.focused?'🎯 ':'') + proj.name : '';
+          if(pName) html+=`<div style="font-size:.62rem;color:var(--tx3);font-weight:600;margin:6px 0 4px 8px;">${pName}</div>`;
+          subGroups[pId].forEach(t=>{ html+=renderTaskRow(t); });
+        });
+        html+='</div>';
+      });
+      el.innerHTML = html || `<div style="text-align:center;padding:32px 0;color:var(--tx3);font-size:.82rem;">${emptyMsg}</div>`;
+      return;
+    }
     let html='';
     secs.forEach(s=>{ if(!s.items.length) return;
       html+=`<div style="margin-bottom:14px;">
@@ -4142,7 +4176,7 @@ function openTaskEdit(taskId){
     <div class="igrp"><label class="ilbl">Link to sub-goal (optional)</label>
       <select class="inp" id="te-proj" style="appearance:none;">
         <option value="">— no sub-goal —</option>
-        ${projs.filter(p=>!t.goalId || p.goalId===t.goalId).map(p=>`<option value="${p.id}" ${t.projId===p.id?'selected':''}>${p.name}</option>`).join('')}
+        ${projs.filter(p=>!t.goalId || p.goalId===t.goalId).map(p=>`<option value="${p.id}" ${t.projId===p.id?'selected':''}>${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
       </select>
     </div>
     <div class="igrp"><label class="ilbl">Notes (optional)</label><textarea class="inp" id="te-notes" rows="2">${t.notes||''}</textarea></div>
@@ -4175,17 +4209,31 @@ function filterSubGoalsByGoal(){
   const projs = S.projects.filter(p=>!p.archived);
   const filtered = goalId ? projs.filter(p=>p.goalId===goalId) : projs;
   projSel.innerHTML = '<option value="">— no sub-goal —</option>' +
-    filtered.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    filtered.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('');
+}
+
+let qaFocusOn = false;
+
+function toggleQaFocus(){
+  qaFocusOn = !qaFocusOn;
+  const btn = document.getElementById('qa-focus-toggle');
+  if(btn){
+    btn.textContent = qaFocusOn ? '🎯 On' : 'Off';
+    btn.style.background = qaFocusOn ? 'var(--blue)' : 'var(--sur)';
+    btn.style.color = qaFocusOn ? '#fff' : 'var(--tx2)';
+  }
+  filterQaSubGoals();
 }
 
 function filterQaSubGoals(){
   const goalId = document.getElementById('qa-goal')?.value||'';
   const projSel = document.getElementById('qa-proj');
   if(!projSel) return;
-  const projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
-  const filtered = goalId ? projs.filter(p=>p.goalId===goalId) : projs;
+  let projs = S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
+  if(goalId) projs = projs.filter(p=>p.goalId===goalId);
+  if(qaFocusOn) projs = projs.filter(p=>p.focused);
   projSel.innerHTML = '<option value="">— unlinked —</option>' +
-    filtered.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    projs.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('');
 }
 
 function archiveTask(taskId){
@@ -5107,6 +5155,7 @@ function buildGoalsContent(){
   const el = document.getElementById('goals-page-content'); if(!el) return;
   
   // Route to appropriate view based on filter mode
+  if(goalsFilterMode === 'focus') return buildFocusView(el);
   if(goalsFilterMode === 'goals') return buildGoalsOnlyView(el);
   if(goalsFilterMode === 'projects') return buildProjectsOnlyView(el);
   if(goalsFilterMode === 'habits') return buildHabitsOnlyView(el);
@@ -5537,6 +5586,7 @@ function renderGoalPageProjRow(p, groupId){
           </div>
         </div>
         ${p.description ? `<span class="info-btn" onclick="event.stopPropagation();showProjectInfo('${p.id}')" title="View details">i</span>` : ''}
+        <span onclick="event.stopPropagation();toggleProjectFocus('${p.id}')" style="font-size:.85rem;cursor:pointer;padding:2px;" title="Toggle focus">${p.focused?'🎯':'○'}</span>
         <span onclick="event.stopPropagation();toggleSwipe(this)" style="font-size:.9rem;color:var(--tx3);padding:4px 2px;cursor:pointer;">⋯</span>
       </div>
       ${habits.length ? `
@@ -6650,8 +6700,14 @@ function quickAddHabitBody(){
 function quickAddTaskBody(){
   const projs=S.projects.filter(p=>!p.archived&&p.status!=='abandoned');
   const goals=S.goals.filter(g=>!g.archived);
+  const focusedProjs = projs.filter(p=>p.focused);
+  const hasFocused = focusedProjs.length > 0;
   return `<div class="igrp"><label class="ilbl">Task</label><input class="inp" id="qa-name" placeholder="What needs to be done…"/></div>
   <div class="igrp"><label class="ilbl">Due date (optional)</label><input class="inp" type="date" id="qa-due"/></div>
+  ${hasFocused ? `<div class="igrp" style="display:flex;align-items:center;gap:8px;">
+    <label style="font-size:.72rem;color:var(--tx2);flex:1;">Show only 🎯 focused sub-goals</label>
+    <button id="qa-focus-toggle" onclick="toggleQaFocus()" style="font-size:.7rem;padding:4px 10px;border-radius:12px;border:1px solid var(--bdr);background:var(--sur);cursor:pointer;color:var(--tx2);">Off</button>
+  </div>` : ''}
   <div class="igrp"><label class="ilbl">Link to goal (optional)</label>
     <select class="inp" id="qa-goal" style="appearance:none;" onchange="filterQaSubGoals()">
       <option value="">— unlinked —</option>
@@ -6661,7 +6717,7 @@ function quickAddTaskBody(){
   <div class="igrp"><label class="ilbl">Link to sub-goal (optional)</label>
     <select class="inp" id="qa-proj" style="appearance:none;">
       <option value="">— unlinked —</option>
-      ${projs.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+      ${projs.map(p=>`<option value="${p.id}">${p.focused?'🎯 ':''}${p.name}</option>`).join('')}
     </select>
   </div>
   <button class="btn btp bfu" onclick="saveTask()">Add task</button>`;
@@ -8894,6 +8950,91 @@ function showProjectInfo(projId){
 function showHabitInfo(habId){
   const h = S.habits.find(h=>h.id===habId); if(!h) return;
   showInfo(h.name, h.hint);
+}
+
+function toggleProjectFocus(projId){
+  const p = S.projects.find(x=>x.id===projId); if(!p) return;
+  if(p.focused){
+    // Removing from focus — just toggle off
+    p.focused = false;
+    p.focusDeadline = '';
+    save();
+    buildGoalsPage();
+    toast('Removed from focus');
+  } else {
+    // Adding to focus — prompt for due date
+    const ex=document.getElementById('info-modal'); if(ex) ex.remove();
+    const m=document.createElement('div'); m.className='modal-bg open'; m.id='info-modal';
+    m.innerHTML=`<div class="modal" style="max-width:360px;">
+      <div style="font-size:.9rem;font-weight:700;margin-bottom:12px;">🎯 Add to Focus</div>
+      <div style="font-size:.78rem;color:var(--tx2);margin-bottom:12px;">${p.name}</div>
+      <div class="igrp"><label class="ilbl">Due date</label>
+        <input class="inp" type="date" id="focus-due-inp"/>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btgh" style="flex:1;" onclick="document.getElementById('info-modal').remove()">Cancel</button>
+        <button class="btn btp bfu" style="flex:1;" onclick="confirmFocus('${projId}')">Add to Focus</button>
+      </div>
+    </div>`;
+    m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+    document.body.appendChild(m);
+  }
+}
+
+function confirmFocus(projId){
+  const p = S.projects.find(x=>x.id===projId); if(!p) return;
+  const due = document.getElementById('focus-due-inp')?.value || '';
+  p.focused = true;
+  p.focusDeadline = due;
+  if(due && !p.deadline) p.deadline = due;
+  save();
+  const m = document.getElementById('info-modal'); if(m) m.remove();
+  buildGoalsPage();
+  toast('🎯 Added to focus');
+}
+
+function buildFocusView(el){
+  const focused = S.projects.filter(p=>!p.archived && p.focused);
+  if(!focused.length){
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--tx3);font-size:.82rem;">No sub-goals in focus yet.<br><br>Tap <span style="font-size:1rem;">○</span> on any sub-goal to add it here.</div>';
+    return;
+  }
+  // Group focused sub-goals by their parent goal
+  const goalMap = {};
+  focused.forEach(p=>{
+    const gId = p.goalId || '_none';
+    if(!goalMap[gId]) goalMap[gId] = [];
+    goalMap[gId].push(p);
+  });
+
+  let html = '';
+  Object.keys(goalMap).forEach(gId=>{
+    const g = S.goals.find(x=>x.id===gId);
+    const gName = g ? g.name : 'No goal';
+    html += `<div style="margin-bottom:16px;">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--tx3);margin-bottom:8px;">${gName}</div>`;
+    goalMap[gId].forEach(p=>{
+      const habits = S.habits.filter(h=>!h.archived && h.projId===p.id);
+      const statusCol = p.status==='complete'?'var(--green)':p.status==='abandoned'?'var(--red)':'var(--tx3)';
+      const dropdId = 'foc-drop-'+p.id;
+      html += `<div style="border:1px solid var(--bdr);border-radius:var(--r2);background:var(--sur);margin-bottom:7px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;">
+          <div style="flex:1;min-width:0;overflow:hidden;" onclick="${habits.length?`toggleSection('${dropdId}')`:''}">
+            <div style="font-size:.84rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+            <div style="font-size:.62rem;color:var(--tx3);margin-top:1px;">
+              <span style="color:${statusCol};font-weight:700;">${p.status}</span>
+              ${p.focusDeadline?' · Due: '+p.focusDeadline:''}${p.deadline&&!p.focusDeadline?' · Due: '+p.deadline:''}
+            </div>
+            ${p.description ? `<div style="font-size:.62rem;color:var(--tx2);margin-top:3px;line-height:1.45;white-space:pre-line;max-height:42px;overflow:hidden;">${escHtml(p.description).substring(0,120)}${p.description.length>120?'…':''}</div>` : ''}
+          </div>
+          ${p.description ? `<span class="info-btn" onclick="event.stopPropagation();showProjectInfo('${p.id}')" title="View details">i</span>` : ''}
+          <span onclick="event.stopPropagation();toggleProjectFocus('${p.id}')" style="font-size:.85rem;cursor:pointer;padding:2px;" title="Remove from focus">🎯</span>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  el.innerHTML = html;
 }
 
 function showAlert(title, msg){
